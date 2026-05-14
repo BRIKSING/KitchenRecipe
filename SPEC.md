@@ -18,52 +18,114 @@
 | Жесты рук | Vision Framework (VNDetectHumanHandPoseRequest) |
 | Сетевой слой | URLSession + async/await |
 | Кэш изображений | NSCache + файловый кэш |
+| Хранилище черновиков | SwiftData |
+| Состояние | @Observable (Swift 5.9 Observation) |
 
-### 2.2 Структура экранов
+### 2.2 Архитектура клиента
+
+Паттерн: **MVVM** с разделением слоёв:
+
+```
+App
+├── Core
+│   ├── Network         — APIClient, Endpoint, NetworkError
+│   ├── Cache           — ImageCache, RecipeCache
+│   ├── Persistence     — SwiftData (черновики)
+│   └── Vision          — HandGestureDetector, GestureType
+├── Features
+│   ├── Auth            — LoginView, RegisterView, AuthViewModel
+│   ├── Recipes         — RecipeListView, RecipeDetailView, RecipeViewModel
+│   ├── Cooking         — CookingSessionView, CookingViewModel, TimerService
+│   ├── Editor          — RecipeEditorView, StepEditorView, EditorViewModel
+│   ├── Categories      — CategoryView, CategoryViewModel
+│   └── Settings        — SettingsView, SettingsViewModel
+├── Shared
+│   ├── Components      — переиспользуемые View-компоненты
+│   ├── Extensions      — расширения стандартных типов
+│   └── Models          — DTO, доменные модели
+└── Resources           — Assets, Localizable.strings
+```
+
+### 2.3 Структура экранов
 
 ```
 TabBar
 ├── Рецепты (RecipesTab)
-│   ├── RecipeListView      — список всех рецептов
-│   ├── RecipeDetailView    — карточка рецепта (инфо + список шагов)
-│   └── CookingSessionView  — пошаговый режим приготовления
+│   ├── RecipeListView       — список всех рецептов
+│   ├── RecipeDetailView     — карточка рецепта (инфо + список шагов)
+│   └── CookingSessionView   — пошаговый режим приготовления
 ├── Категории (CategoriesTab)
-│   └── CategoryView        — рецепты по категории
+│   └── CategoryView         — рецепты по категории
 └── Профиль (ProfileTab)
-    └── SettingsView        — настройки (жесты, язык, сервер)
+    └── SettingsView         — настройки (жесты, язык, сервер)
 ```
 
-### 2.3 Экран RecipeListView
+### 2.4 Экран RecipeListView
 
-- Сетка карточек (2 колонки на iPhone, 3–4 на iPad)
-- Поиск по названию и тегам
-- Фильтрация по категории, времени приготовления, сложности
-- Кнопка создания нового рецепта
-- Pull-to-refresh
+**Лейаут:**
+- Сетка карточек: 2 колонки на iPhone, 3–4 на iPad (LazyVGrid с адаптивными колонками)
+- Каждая карточка: обложка (aspect ratio 4:3), название, время, сложность, теги
 
-### 2.4 Экран RecipeDetailView
+**Поиск и фильтрация:**
+- `searchable` — поиск по названию и тегам (debounce 300 мс)
+- Фильтр-шторка (sheet): категория, сложность (easy/medium/hard), максимальное время
+- Активные фильтры отображаются как чипы под строкой поиска с кнопкой сброса
 
-Содержит:
-- Обложка рецепта (большое фото)
-- Название, описание, категория, теги
-- Мета-информация: время готовки, количество порций, сложность
-- Список ингредиентов
-- Краткий список шагов (превью)
-- Кнопка **«Начать приготовление»** → переход в CookingSessionView
+**Прочее:**
+- Pull-to-refresh (`refreshable`)
+- Пагинация при достижении конца списка (infinity scroll)
+- Кнопка `+` (FAB) → RecipeEditorView
+- Состояния: загрузка (skeleton), пустой список, ошибка с кнопкой retry
 
-### 2.5 Экран CookingSessionView (ключевой экран)
+### 2.5 Экран RecipeDetailView
 
-Полноэкранный пошаговый режим:
+**Секции (ScrollView):**
+1. **Hero-область** — обложка рецепта с параллакс-эффектом, поверх: название + категория
+2. **Мета-блок** — иконки с подписями: время, порции, сложность
+3. **Теги** — горизонтальная прокрутка чипов
+4. **Описание** — expandable текст (показывать первые 3 строки, кнопка «Читать далее»)
+5. **Ингредиенты** — список с количеством и единицами; кнопка масштабирования порций (множитель ×0.5, ×1, ×2, ×3)
+6. **Шаги** — превью-список: номер + заголовок + миниатюра первого фото
+7. **Закреплённая кнопка** — «Начать приготовление» (прилипает к bottom safe area)
 
-- Крупный номер шага и заголовок
-- Полноэкранный или крупный слайдер фотографий шага (поддержка нескольких фото)
-- Текстовое описание шага
-- Таймер (если задан для шага)
-- Навигация: кнопки «Назад» / «Вперёд»
-- Индикатор прогресса (шаг X из N)
-- **Панель hands-free режима** — кнопка активации жестового управления (см. 2.6)
+**Действия:**
+- Редактирование (только для автора) → RecipeEditorView
+- Поделиться рецептом (Share Sheet, deeplink)
 
-### 2.6 Hands-Free режим (жестовое управление)
+### 2.6 Экран CookingSessionView (ключевой экран)
+
+**Полноэкранный пошаговый режим:**
+
+```
+┌─────────────────────────────────────┐
+│  [✕ Выйти]          Шаг 2 из 7     │
+│─────────────────────────────────────│
+│                                     │
+│   [ фото шага — PageView/слайдер ]  │
+│         ○ ● ○  (dot indicator)      │
+│                                     │
+│─────────────────────────────────────│
+│  Сварить пасту                      │
+│  Отварить спагетти в подсолённой    │
+│  воде до состояния аль денте...     │
+│                                     │
+│  [ Таймер: 08:00  ▶ ]               │
+│─────────────────────────────────────│
+│  [◀ Назад]  ━━━━●━━━━━━  [Вперёд ▶]│
+│                                     │
+│  [ 👁 Hands-free: OFF ]             │
+└─────────────────────────────────────┘
+```
+
+**Детали реализации:**
+- Фото шага — `TabView` с `PageTabViewStyle`, поддержка pinch-to-zoom
+- Таймер — обратный отсчёт, сохраняет состояние при переключении шагов, звуковой сигнал по окончании
+- Навигация свайпом по горизонтали (жест + кнопки)
+- Прогресс-бар вверху экрана (заполняется по мере прохождения шагов)
+- Блокировка автоблокировки экрана (`UIApplication.shared.isIdleTimerDisabled = true`) на время сессии
+- Экран «Готово!» после последнего шага с анимацией и кнопкой «Оценить рецепт»
+
+### 2.7 Hands-Free режим (жестовое управление)
 
 **Цель:** при готовке руки заняты или грязные — пользователь управляет шагами жестами перед камерой.
 
@@ -71,7 +133,7 @@ TabBar
 
 | Жест | Действие |
 |---|---|
-| Открытая ладонь (5 пальцев) → движение вправо | Следующий шаг |
+| Открытая ладонь → движение вправо | Следующий шаг |
 | Открытая ладонь → движение влево | Предыдущий шаг |
 | Сжатый кулак (удержание 1 сек) | Пауза/продолжение таймера |
 | Два пальца вверх (V) | Подтверждение / голосовая подсказка |
@@ -80,26 +142,86 @@ TabBar
 - `AVCaptureSession` + `VNDetectHumanHandPoseRequest` (Vision)
 - Анализ позиции ключевых точек пальцев (landmarks: wrist, fingertips)
 - Определение направления свайпа по дельте положения запястья между кадрами
-- Обработка в фоновом потоке, UI-обновления на главном
-- Прозрачный оверлей с визуальной индикацией распознанного жеста
-- Настройка чувствительности в Settings
-- Автоотключение при сворачивании приложения
+- Обработка в фоновом потоке (`DispatchQueue`), UI-обновления на главном
+- Прозрачный оверлей с визуальной индикацией распознанного жеста (иконка + название жеста)
+- Индикатор уверенности распознавания (confidence bar)
+- Настройка чувствительности в Settings (порог дельты, время удержания)
+- Автоотключение при сворачивании приложения (`scenePhase`)
 - Задержка между срабатываниями — 1.5 сек (защита от случайных жестов)
 
 **Privacy:**
 - Запрос разрешения на камеру с пояснением (NSCameraUsageDescription)
 - Видеопоток **не** передаётся на сервер, обрабатывается только локально
+- В настройках — чёткое пояснение, зачем нужна камера
 
-### 2.7 Создание/редактирование рецепта
+### 2.8 Экран RecipeEditorView (создание/редактирование)
 
-- Форма с полями: название, описание, категория, теги, сложность, время, порции
-- Добавление ингредиентов (название + количество + единица)
-- Добавление шагов:
-  - Порядковый номер (drag-to-reorder)
-  - Заголовок и описание шага
-  - Загрузка фотографий (из галереи или камеры, до 5 фото на шаг)
-  - Опциональный таймер (в секундах)
-- Сохранение черновика локально до публикации
+**Структура формы (многошаговая или единый ScrollView):**
+
+1. **Основная информация**
+   - Название (обязательное, макс. 100 символов)
+   - Описание (textarea)
+   - Обложка (PhotosPicker / Camera, crop до 16:9)
+   - Категория (Picker)
+   - Теги (мультиселект + создание нового тега)
+   - Сложность (сегментированный контрол: Лёгкий / Средний / Сложный)
+   - Время приготовления (Stepper, шаг 5 мин)
+   - Количество порций (Stepper)
+
+2. **Ингредиенты**
+   - Список с полями: название + количество + единица (г, мл, шт, ст.л. …)
+   - Swipe-to-delete, drag-to-reorder (EditMode)
+   - Кнопка «Добавить ингредиент»
+
+3. **Шаги приготовления**
+   - Список шагов с drag-to-reorder
+   - Каждый шаг раскрывается в StepEditorView:
+     - Заголовок и описание шага
+     - До 5 фото (PhotosPicker + Camera, превью с удалением)
+     - Таймер: toggle + поле ввода (минуты:секунды)
+   - Кнопка «Добавить шаг»
+
+**Поведение:**
+- Автосохранение черновика в SwiftData каждые 30 сек
+- Валидация перед публикацией (название обязательно, минимум 1 шаг)
+- Кнопки «Сохранить черновик» и «Опубликовать»
+- Предупреждение при выходе с несохранёнными изменениями
+
+### 2.9 Экран SettingsView
+
+- Адрес сервера (текстовое поле, проверка доступности)
+- Hands-free: включить/выключить по умолчанию, чувствительность (Slider)
+- Язык интерфейса (Picker: системный / RU / EN)
+- Уведомления таймера (звук, вибрация)
+- Аккаунт: имя, email, выйти, удалить аккаунт
+- О приложении: версия, лицензии
+
+### 2.10 Сетевой слой
+
+```swift
+// Структура APIClient
+APIClient
+├── func request<T: Decodable>(_ endpoint: Endpoint) async throws -> T
+├── func upload(image: Data, to endpoint: Endpoint) async throws -> UploadResponse
+└── Interceptor: автоматическое обновление JWT (refresh token flow)
+
+Endpoint — enum с ассоциированными значениями:
+  case recipes(RecipesQuery)
+  case recipe(UUID)
+  case createRecipe(RecipeCreateRequest)
+  ...
+```
+
+**Обработка ошибок:**
+- `NetworkError`: noConnection, unauthorized (→ redirect to login), serverError(code, message), decodingError
+- Retry-логика: 3 попытки с exponential backoff для сетевых ошибок
+- Показ error banner в UI через глобальный `ErrorBannerModifier`
+
+### 2.11 Кэширование
+
+- Изображения: `NSCache<NSString, UIImage>` (memory) + файловый кэш в `Caches/` (disk), TTL 7 дней
+- Список рецептов: кэш последнего ответа в UserDefaults для offline-просмотра
+- Детали рецепта: кэш в SwiftData для offline-доступа к просмотренным рецептам
 
 ---
 
@@ -109,76 +231,172 @@ TabBar
 
 | Компонент | Выбор |
 |---|---|
-| Язык | Python 3.12 |
-| Framework | FastAPI |
+| Язык | TypeScript 5+ / Node.js 22 |
+| Framework | Fastify 4 |
 | База данных | PostgreSQL 16 |
-| ORM | SQLAlchemy 2.0 (async) |
-| Миграции | Alembic |
+| ORM | Prisma 5 |
+| Миграции | Prisma Migrate |
+| Валидация | Zod |
 | Хранилище файлов | S3-совместимое (MinIO / AWS S3) |
+| S3-клиент | @aws-sdk/client-s3 |
+| Обработка изображений | sharp |
 | Аутентификация | JWT (access + refresh tokens) |
+| Хэширование паролей | bcrypt |
+| Логирование | pino (встроен в Fastify) |
+| Rate limiting | @fastify/rate-limit |
 | Контейнеризация | Docker + docker-compose |
 
-### 3.2 Модели данных
+### 3.2 Структура проекта
 
 ```
-User
-  id            UUID PK
-  email         TEXT UNIQUE
-  username      TEXT UNIQUE
-  password_hash TEXT
-  created_at    TIMESTAMP
-
-Category
-  id    UUID PK
-  name  TEXT UNIQUE
-  slug  TEXT UNIQUE
-
-Recipe
-  id            UUID PK
-  author_id     UUID FK → User
-  title         TEXT
-  description   TEXT
-  category_id   UUID FK → Category
-  difficulty    ENUM(easy, medium, hard)
-  cook_time_min INTEGER
-  servings      INTEGER
-  cover_image   TEXT  (S3 key)
-  is_published  BOOLEAN
-  created_at    TIMESTAMP
-  updated_at    TIMESTAMP
-
-Tag
-  id   UUID PK
-  name TEXT UNIQUE
-
-RecipeTag
-  recipe_id UUID FK → Recipe
-  tag_id    UUID FK → Tag
-
-Ingredient
-  id        UUID PK
-  recipe_id UUID FK → Recipe
-  name      TEXT
-  amount    DECIMAL
-  unit      TEXT
-  sort_order INTEGER
-
-Step
-  id          UUID PK
-  recipe_id   UUID FK → Recipe
-  sort_order  INTEGER
-  title       TEXT
-  description TEXT
-  timer_sec   INTEGER NULLABLE
-
-StepPhoto
-  id       UUID PK
-  step_id  UUID FK → Step
-  s3_key   TEXT
-  sort_order INTEGER
+src/
+├── app.ts               — инициализация Fastify, регистрация плагинов
+├── server.ts            — точка входа, listen
+├── config.ts            — конфигурация через Zod (process.env)
+├── plugins/
+│   ├── prisma.ts        — Prisma client как Fastify-плагин
+│   ├── jwt.ts           — @fastify/jwt
+│   ├── multipart.ts     — @fastify/multipart
+│   └── rateLimit.ts     — @fastify/rate-limit
+├── modules/
+│   ├── auth/
+│   │   ├── auth.routes.ts
+│   │   ├── auth.service.ts
+│   │   └── auth.schema.ts   — Zod-схемы + JSON Schema для Fastify
+│   ├── recipes/
+│   │   ├── recipes.routes.ts
+│   │   ├── recipes.service.ts
+│   │   └── recipes.schema.ts
+│   ├── steps/
+│   ├── categories/
+│   ├── tags/
+│   └── upload/
+├── middleware/
+│   └── authenticate.ts  — preHandler-хук проверки JWT
+├── lib/
+│   ├── s3.ts            — обёртка над @aws-sdk/client-s3
+│   └── image.ts         — обработка изображений через sharp
+└── prisma/
+    └── schema.prisma
 ```
 
-### 3.3 API Endpoints
+### 3.3 Prisma-схема (модели данных)
+
+```prisma
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  recipes      Recipe[]
+
+  @@map("users")
+}
+
+model Category {
+  id      String   @id @default(uuid())
+  name    String   @unique
+  slug    String   @unique
+  recipes Recipe[]
+
+  @@map("categories")
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+model Recipe {
+  id           String      @id @default(uuid())
+  author       User        @relation(fields: [authorId], references: [id])
+  authorId     String      @map("author_id")
+  title        String
+  description  String?
+  category     Category?   @relation(fields: [categoryId], references: [id])
+  categoryId   String?     @map("category_id")
+  difficulty   Difficulty
+  cookTimeMin  Int         @map("cook_time_min")
+  servings     Int
+  coverImage   String?     @map("cover_image")
+  isPublished  Boolean     @default(false) @map("is_published")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  tags         RecipeTag[]
+  ingredients  Ingredient[]
+  steps        Step[]
+
+  @@map("recipes")
+}
+
+model Tag {
+  id      String      @id @default(uuid())
+  name    String      @unique
+  recipes RecipeTag[]
+
+  @@map("tags")
+}
+
+model RecipeTag {
+  recipe   Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipeId String @map("recipe_id")
+  tag      Tag    @relation(fields: [tagId], references: [id])
+  tagId    String @map("tag_id")
+
+  @@id([recipeId, tagId])
+  @@map("recipe_tags")
+}
+
+model Ingredient {
+  id        String @id @default(uuid())
+  recipe    Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipeId  String @map("recipe_id")
+  name      String
+  amount    Float
+  unit      String
+  sortOrder Int    @map("sort_order")
+
+  @@map("ingredients")
+}
+
+model Step {
+  id          String      @id @default(uuid())
+  recipe      Recipe      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  recipeId    String      @map("recipe_id")
+  sortOrder   Int         @map("sort_order")
+  title       String
+  description String
+  timerSec    Int?        @map("timer_sec")
+  photos      StepPhoto[]
+
+  @@map("steps")
+}
+
+model StepPhoto {
+  id        String @id @default(uuid())
+  step      Step   @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  stepId    String @map("step_id")
+  s3Key     String @map("s3_key")
+  sortOrder Int    @map("sort_order")
+
+  @@map("step_photos")
+}
+```
+
+### 3.4 API Endpoints
 
 #### Аутентификация
 ```
@@ -200,18 +418,18 @@ POST   /recipes/{id}/publish        — опубликовать рецепт
 
 #### Шаги
 ```
-GET    /recipes/{id}/steps          — все шаги рецепта
-POST   /recipes/{id}/steps          — добавить шаг
+GET    /recipes/{id}/steps               — все шаги рецепта
+POST   /recipes/{id}/steps               — добавить шаг
 PUT    /recipes/{id}/steps/{step_id}     — обновить шаг
 DELETE /recipes/{id}/steps/{step_id}     — удалить шаг
-PATCH  /recipes/{id}/steps/reorder  — изменить порядок шагов
+PATCH  /recipes/{id}/steps/reorder       — изменить порядок шагов
 ```
 
 #### Фотографии шагов
 ```
-POST   /steps/{step_id}/photos           — загрузить фото (multipart)
+POST   /steps/{step_id}/photos            — загрузить фото (multipart)
 DELETE /steps/{step_id}/photos/{photo_id} — удалить фото
-PATCH  /steps/{step_id}/photos/reorder   — изменить порядок фото
+PATCH  /steps/{step_id}/photos/reorder    — изменить порядок фото
 ```
 
 #### Категории и теги
@@ -226,7 +444,7 @@ GET  /tags             — список тегов (с поиском)
 POST /upload/image     — прямая загрузка изображения → возвращает URL
 ```
 
-### 3.4 Параметры фильтрации GET /recipes
+### 3.5 Параметры фильтрации GET /recipes
 
 | Параметр | Тип | Описание |
 |---|---|---|
@@ -238,7 +456,7 @@ POST /upload/image     — прямая загрузка изображения 
 | `page` | int | Номер страницы |
 | `per_page` | int | Размер страницы (max 50) |
 
-### 3.5 Формат ответа GET /recipes/{id}
+### 3.6 Формат ответа GET /recipes/{id}
 
 ```json
 {
@@ -259,7 +477,7 @@ POST /upload/image     — прямая загрузка изображения 
       "id": "uuid",
       "sort_order": 1,
       "title": "Сварить пасту",
-      "description": "Отварить спагетти в подсоленной воде аль денте...",
+      "description": "Отварить спагетти в подсолённой воде аль денте...",
       "timer_sec": 480,
       "photos": [
         { "id": "uuid", "url": "https://...", "sort_order": 1 }
@@ -271,13 +489,34 @@ POST /upload/image     — прямая загрузка изображения 
 }
 ```
 
-### 3.6 Загрузка изображений
+### 3.7 Загрузка изображений
 
-- Клиент отправляет `POST /upload/image` с `multipart/form-data`
-- Сервер валидирует (тип: JPEG/PNG/HEIC, размер: max 10 MB)
-- Конвертирует в JPEG, создаёт превью 400×400 и полноразмерный вариант
-- Загружает в S3, возвращает `{ "url": "...", "key": "..." }`
+- Клиент отправляет `POST /upload/image` с `multipart/form-data` (`@fastify/multipart`)
+- Сервер валидирует через Zod (тип: JPEG/PNG/HEIC, размер: max 10 MB)
+- `sharp`: конвертирует в JPEG, создаёт превью 400×400 и полноразмерный вариант
+- `@aws-sdk/client-s3` (`PutObjectCommand`): загружает оба варианта в S3/MinIO
+- Возвращает `{ "url": "...", "key": "..." }`
 - URL привязывается к шагу через `POST /steps/{id}/photos`
+
+### 3.8 Конфигурация окружения
+
+```ts
+// config.ts — Zod-валидация process.env при старте
+const envSchema = z.object({
+  DATABASE_URL:        z.string().url(),          // postgresql://...
+  JWT_ACCESS_SECRET:  z.string().min(32),
+  JWT_REFRESH_SECRET: z.string().min(32),
+  JWT_ACCESS_TTL:     z.string().default('15m'),
+  JWT_REFRESH_TTL:    z.string().default('30d'),
+  S3_ENDPOINT:        z.string().url(),
+  S3_BUCKET:          z.string(),
+  S3_REGION:          z.string().default('us-east-1'),
+  S3_ACCESS_KEY:      z.string(),
+  S3_SECRET_KEY:      z.string(),
+  PORT:               z.coerce.number().default(3000),
+  NODE_ENV:           z.enum(['development', 'production', 'test']),
+})
+```
 
 ---
 
@@ -293,14 +532,145 @@ POST /upload/image     — прямая загрузка изображения 
 
 ---
 
-## 5. MVP vs. будущие фичи
+## 5. Этапы разработки
 
-### MVP
-- [x] CRUD рецептов со шагами и фотографиями
-- [x] Авторизация
-- [x] Hands-free жесты (следующий/предыдущий шаг)
-- [x] Поиск и фильтрация
-- [x] Таймер на шаге
+### Этап 1 — Бэкенд: фундамент
+
+- [ ] Инициализация проекта: `npm init`, TypeScript 5+, tsconfig, ESLint + Prettier
+- [ ] Установка зависимостей: `fastify`, `@fastify/jwt`, `@fastify/multipart`, `@fastify/rate-limit`, `prisma`, `zod`, `bcrypt`, `sharp`, `@aws-sdk/client-s3`, `pino`
+- [ ] Docker-compose: PostgreSQL 16 + MinIO + app-сервис
+- [ ] `prisma/schema.prisma` — все модели (User, Category, Recipe, Tag, Ingredient, Step, StepPhoto)
+- [ ] `prisma migrate dev --name init` — первая миграция
+- [ ] `config.ts` — Zod-валидация `process.env` при старте
+- [ ] `app.ts` — инициализация Fastify, регистрация плагинов (prisma, jwt, multipart, rateLimit)
+- [ ] Базовый health-check `GET /health`
+
+### Этап 2 — Бэкенд: аутентификация
+
+- [ ] `POST /auth/register` — валидация Zod + хэш пароля `bcrypt`
+- [ ] `POST /auth/login` — выдача access + refresh JWT (`@fastify/jwt`)
+- [ ] `POST /auth/refresh` — верификация refresh token, выдача нового access token
+- [ ] `POST /auth/logout` — инвалидация refresh token (запись в blacklist или удаление из БД)
+- [ ] `authenticate` preHandler-хук — проверка Bearer токена для защищённых роутов
+- [ ] Zod-схемы запроса/ответа для всех auth-эндпоинтов
+
+### Этап 3 — Бэкенд: CRUD рецептов
+
+- [ ] `GET /recipes` — список с пагинацией и фильтрами (`q`, `category`, `tags`, `difficulty`, `max_time`)
+- [ ] `POST /recipes` — создание рецепта (Zod-валидация body)
+- [ ] `GET /recipes/:id` — полные данные рецепта (Prisma `include`: steps, ingredients, tags)
+- [ ] `PUT /recipes/:id` — обновление (проверка авторства)
+- [ ] `DELETE /recipes/:id` — удаление (проверка авторства)
+- [ ] `POST /recipes/:id/publish` — публикация
+- [ ] Обработка ошибок: 404, 403 через Fastify error handler
+
+### Этап 4 — Бэкенд: шаги и медиа
+
+- [ ] CRUD шагов (`GET/POST/PUT/DELETE /recipes/:id/steps`)
+- [ ] `PATCH /recipes/:id/steps/reorder` — атомарное обновление `sortOrder` через `prisma.$transaction`
+- [ ] `lib/s3.ts` — обёртка `PutObjectCommand` / `DeleteObjectCommand` (`@aws-sdk/client-s3`)
+- [ ] `lib/image.ts` — `sharp`: валидация mime, ресайз, конвертация в JPEG
+- [ ] `POST /upload/image` — приём `multipart/form-data`, обработка `sharp`, загрузка в S3
+- [ ] CRUD фотографий шагов (`POST/DELETE /steps/:stepId/photos`)
+- [ ] `PATCH /steps/:stepId/photos/reorder`
+
+### Этап 5 — Бэкенд: категории, теги, тесты
+
+- [ ] `GET /categories`, `POST /categories` (admin-guard)
+- [ ] `GET /tags` (с поиском по `q`)
+- [ ] Настройка Vitest + supertest для интеграционных тестов
+- [ ] Тесты: auth flow, CRUD рецептов, загрузка изображений (mock S3)
+- [ ] CI: GitHub Actions — `tsc --noEmit` + ESLint + `vitest run` при push
+
+### Этап 6 — iOS: базовая структура
+
+- [ ] Создание Xcode-проекта (SwiftUI, iOS 17+)
+- [ ] Структура папок (Core / Features / Shared / Resources)
+- [ ] `APIClient` — базовый сетевой слой (URLSession + async/await)
+- [ ] `Endpoint` enum — все эндпоинты
+- [ ] Доменные модели (Recipe, Step, Ingredient …) + декодирование
+- [ ] Глобальный `ErrorBanner` модификатор
+
+### Этап 7 — iOS: аутентификация
+
+- [ ] `LoginView` + `RegisterView`
+- [ ] `AuthViewModel` — login/register/logout
+- [ ] Хранение токенов в Keychain
+- [ ] Автоматическое обновление access token (interceptor)
+- [ ] Защищённый роутинг: переход на главную после логина
+
+### Этап 8 — iOS: список и детали рецепта
+
+- [ ] `RecipeListView` — сетка карточек (LazyVGrid, 2/3/4 колонки)
+- [ ] `RecipeCardView` — компонент карточки с обложкой, названием, мета
+- [ ] Поиск (searchable + debounce)
+- [ ] Фильтр-шторка (категория, сложность, время)
+- [ ] Чипы активных фильтров
+- [ ] Пагинация (infinity scroll)
+- [ ] Pull-to-refresh
+- [ ] `RecipeDetailView` — hero-фото, мета, ингредиенты, превью шагов
+- [ ] Масштабирование порций (×0.5/×1/×2/×3)
+- [ ] Кэширование изображений (NSCache + disk)
+
+### Этап 9 — iOS: режим приготовления
+
+- [ ] `CookingSessionView` — полноэкранный пошаговый режим
+- [ ] Слайдер фотографий шага (TabView + PageTabViewStyle + pinch-to-zoom)
+- [ ] Прогресс-бар и навигация (кнопки + swipe-жест)
+- [ ] `TimerService` — обратный отсчёт, пауза, звуковой сигнал
+- [ ] Блокировка автоблокировки экрана
+- [ ] Экран завершения («Готово!» + анимация)
+
+### Этап 10 — iOS: Hands-Free режим
+
+- [ ] Запрос разрешения камеры (Info.plist + runtime prompt)
+- [ ] `AVCaptureSession` + `VNDetectHumanHandPoseRequest`
+- [ ] Определение жеста «открытая ладонь + свайп» (по дельте запястья)
+- [ ] Жест «сжатый кулак» (удержание 1 сек)
+- [ ] Жест «два пальца V»
+- [ ] Оверлей с индикацией распознанного жеста
+- [ ] Задержка между срабатываниями 1.5 сек
+- [ ] Настройка чувствительности в SettingsView
+- [ ] Автоотключение при сворачивании приложения
+
+### Этап 11 — iOS: редактор рецептов
+
+- [ ] `RecipeEditorView` — форма основной информации
+- [ ] PhotosPicker: обложка рецепта (crop 16:9)
+- [ ] Список ингредиентов (добавить / удалить / reorder)
+- [ ] Список шагов с `StepEditorView` (drag-to-reorder)
+- [ ] `StepEditorView`: заголовок, описание, фото (до 5 шт), таймер
+- [ ] Автосохранение черновика в SwiftData каждые 30 сек
+- [ ] Валидация и публикация
+- [ ] Предупреждение при выходе с несохранёнными изменениями
+
+### Этап 12 — iOS: настройки, категории, офлайн
+
+- [ ] `SettingsView` — адрес сервера, руки-free настройки, аккаунт
+- [ ] `CategoryView` — список рецептов по категории
+- [ ] Offline-режим: кэш просмотренных рецептов в SwiftData
+- [ ] Обработка `noConnection` — показ кэша + banner
+
+### Этап 13 — Финализация и полировка
+
+- [ ] Локализация: RU + EN (Localizable.strings)
+- [ ] Адаптация лейаутов для iPad (landscape + portrait)
+- [ ] Dark Mode поддержка
+- [ ] Accessibility (VoiceOver labels, Dynamic Type)
+- [ ] App Icon и Launch Screen
+- [ ] Тестфлайт-сборка + smoke-test на реальном устройстве
+- [ ] Финальный ревью безопасности (Keychain, HTTPS, camera privacy)
+
+---
+
+## 6. MVP vs. будущие фичи
+
+### MVP (этапы 1–13)
+- [ ] CRUD рецептов со шагами и фотографиями
+- [ ] Авторизация
+- [ ] Hands-free жесты (следующий/предыдущий шаг)
+- [ ] Поиск и фильтрация
+- [ ] Таймер на шаге
 
 ### После MVP
 - [ ] Голосовые команды (Speech framework)
