@@ -8,6 +8,10 @@ final class AuthViewModel: ObservableObject {
 
     private let api = APIClient.shared
 
+    init() {
+        isAuthenticated = api.isAuthenticated
+    }
+
     func login(email: String, password: String) async {
         isLoading = true
         defer { isLoading = false }

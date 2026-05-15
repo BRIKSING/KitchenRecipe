@@ -1,14 +1,5 @@
 import Foundation
 
-// MARK: - Token storage (Keychain backed via KeychainService, see Этап 7)
-// For now tokens live in memory; Keychain persistence added in Auth stage.
-
-@Observable
-final class TokenStore {
-    var accessToken: String?
-    var refreshToken: String?
-}
-
 // MARK: - APIClient
 
 final class APIClient {
@@ -16,17 +7,14 @@ final class APIClient {
 
     private let session: URLSession
     private let decoder: JSONDecoder
-    private let tokenStore: TokenStore
     private var baseURL: URL
 
     private init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
-        self.session    = URLSession(configuration: config)
-        self.decoder    = JSONDecoder()
-        self.tokenStore = TokenStore()
-        // Default server address; overridable from SettingsView
-        self.baseURL    = URL(string: UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000")!
+        self.session = URLSession(configuration: config)
+        self.decoder = JSONDecoder()
+        self.baseURL = URL(string: UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000")!
         decoder.dateDecodingStrategy = .iso8601
     }
 
@@ -37,16 +25,15 @@ final class APIClient {
     }
 
     func setTokens(access: String, refresh: String) {
-        tokenStore.accessToken  = access
-        tokenStore.refreshToken = refresh
+        KeychainService.accessToken  = access
+        KeychainService.refreshToken = refresh
     }
 
     func clearTokens() {
-        tokenStore.accessToken  = nil
-        tokenStore.refreshToken = nil
+        KeychainService.clearAll()
     }
 
-    var isAuthenticated: Bool { tokenStore.accessToken != nil }
+    var isAuthenticated: Bool { KeychainService.accessToken != nil }
 
     // MARK: - Generic request
 
@@ -74,7 +61,7 @@ final class APIClient {
         var request = URLRequest(url: components.url!)
         request.httpMethod = endpoint.method
 
-        if let token = tokenStore.accessToken {
+        if let token = KeychainService.accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -139,14 +126,14 @@ final class APIClient {
     // MARK: - Token refresh
 
     private func refreshAccessToken() async throws -> String {
-        guard let refreshToken = tokenStore.refreshToken else {
+        guard let refreshToken = KeychainService.refreshToken else {
             throw NetworkError.unauthorized
         }
 
         struct RefreshBody: Encodable { let refresh_token: String }
         struct RefreshResponse: Decodable { let access_token: String }
 
-        var components = URLComponents(url: baseURL.appendingPathComponent("/auth/refresh"), resolvingAgainstBaseURL: false)!
+        let components = URLComponents(url: baseURL.appendingPathComponent("/auth/refresh"), resolvingAgainstBaseURL: false)!
         var req = URLRequest(url: components.url!)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -154,7 +141,7 @@ final class APIClient {
 
         let (data, _) = try await session.data(for: req)
         let result = try decoder.decode(RefreshResponse.self, from: data)
-        tokenStore.accessToken = result.access_token
+        KeychainService.accessToken = result.access_token
         return result.access_token
     }
 
