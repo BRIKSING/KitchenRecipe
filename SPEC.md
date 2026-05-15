@@ -584,12 +584,12 @@ const envSchema = z.object({
 
 ### Этап 6 — iOS: базовая структура
 
-- [ ] Создание Xcode-проекта (SwiftUI, iOS 17+)
-- [ ] Структура папок (Core / Features / Shared / Resources)
-- [ ] `APIClient` — базовый сетевой слой (URLSession + async/await)
-- [ ] `Endpoint` enum — все эндпоинты
-- [ ] Доменные модели (Recipe, Step, Ingredient …) + декодирование
-- [ ] Глобальный `ErrorBanner` модификатор
+- [x] Создание Xcode-проекта (SwiftUI, iOS 17+)
+- [x] Структура папок (Core / Features / Shared / Resources)
+- [x] `APIClient` — базовый сетевой слой (URLSession + async/await)
+- [x] `Endpoint` enum — все эндпоинты
+- [x] Доменные модели (Recipe, Step, Ingredient …) + декодирование
+- [x] Глобальный `ErrorBanner` модификатор
 
 ### Этап 7 — iOS: аутентификация
 
