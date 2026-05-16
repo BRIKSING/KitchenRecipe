@@ -5,7 +5,9 @@ import Combine
 final class RecipeViewModel: ObservableObject {
     @Published var recipes: [RecipeListItem] = []
     @Published var isLoading = false
+    @Published var error: Error?
     @Published var hasMore = true
+    @Published var categories: [RecipeCategory] = []
 
     private let api = APIClient.shared
     private var currentPage = 1
@@ -16,6 +18,7 @@ final class RecipeViewModel: ObservableObject {
             currentPage = 1
             recipes = []
             hasMore = true
+            error = nil
         }
         guard hasMore else { return }
 
@@ -31,11 +34,22 @@ final class RecipeViewModel: ObservableObject {
             hasMore = response.hasMore
             currentPage += 1
         } catch {
+            self.error = error
             ErrorBannerState.shared.show(error)
         }
     }
 
     func loadDetail(id: UUID) async throws -> Recipe {
         try await api.request(.recipe(id))
+    }
+
+    func loadCategories() async {
+        guard categories.isEmpty else { return }
+        do {
+            let cats: [RecipeCategory] = try await api.request(.categories)
+            categories = cats
+        } catch {
+            // Non-fatal
+        }
     }
 }
