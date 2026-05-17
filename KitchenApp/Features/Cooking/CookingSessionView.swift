@@ -3,6 +3,7 @@ import SwiftUI
 struct CookingSessionView: View {
     let recipe: Recipe
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     private var sortedSteps: [Step] {
         recipe.steps.sorted { $0.sortOrder < $1.sortOrder }
@@ -11,12 +12,13 @@ struct CookingSessionView: View {
     @State private var currentStepIndex = 0
     @State private var showCompletion = false
     @StateObject private var timer = TimerService()
+    @StateObject private var gestureDetector = HandGestureDetector()
 
     // Per-step timer state: [stepIndex: (remaining, isFinished)]
     @State private var timerStates: [Int: (remaining: Int, isFinished: Bool)] = [:]
 
-    // Hands-free stub (full implementation in Этап 10)
     @State private var handsFreeEnabled = false
+    @State private var showCameraPermissionAlert = false
 
     // Photo viewer
     @State private var photoPage = 0
@@ -41,6 +43,13 @@ struct CookingSessionView: View {
                 bottomNavBar
             }
 
+            // Hands-free gesture overlay
+            HandsFreeOverlayView(
+                gesture: gestureDetector.detectedGesture,
+                confidence: gestureDetector.detectionConfidence,
+                isActive: handsFreeEnabled
+            )
+
             if showCompletion {
                 CompletionView { dismiss() }
                     .transition(.opacity)
@@ -50,10 +59,12 @@ struct CookingSessionView: View {
         .onAppear {
             UIApplication.shared.isIdleTimerDisabled = true
             configureTimerForStep(0)
+            wireGestureDetector()
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             timer.stop()
+            gestureDetector.stop()
         }
         .onChange(of: currentStepIndex) { oldIndex, newIndex in
             saveTimerState(for: oldIndex)
@@ -63,6 +74,29 @@ struct CookingSessionView: View {
                 lastPhotoScale = 1.0
             }
             configureTimerForStep(newIndex)
+        }
+        .onChange(of: handsFreeEnabled) { _, enabled in
+            if enabled {
+                startHandsFree()
+            } else {
+                gestureDetector.stop()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active, handsFreeEnabled {
+                gestureDetector.stop()
+                handsFreeEnabled = false
+            }
+        }
+        .alert("Нет доступа к камере", isPresented: $showCameraPermissionAlert) {
+            Button("Открыть настройки") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Отмена", role: .cancel) { handsFreeEnabled = false }
+        } message: {
+            Text("Разрешите доступ к камере в настройках, чтобы использовать управление жестами.")
         }
     }
 
@@ -332,7 +366,6 @@ struct CookingSessionView: View {
                     }
             )
 
-            // Hands-free row
             Button {
                 handsFreeEnabled.toggle()
             } label: {
@@ -405,6 +438,44 @@ struct CookingSessionView: View {
         guard index < sortedSteps.count, sortedSteps[index].timerSec != nil else { return }
         timerStates[index] = (timer.remaining, timer.isFinished)
         timer.pause()
+    }
+
+    // MARK: - Hands-free
+
+    private func wireGestureDetector() {
+        gestureDetector.onGesture = { [self] gesture in
+            switch gesture {
+            case .swipeNext:
+                navigateNext()
+            case .swipePrev:
+                navigatePrev()
+            case .fistHold:
+                timer.toggle()
+            case .victory:
+                // Confirmation hint — brief haptic feedback
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
+
+        // Auto-enable if user set it as default in Settings
+        if UserDefaults.standard.bool(forKey: "handsfree.enabledByDefault") {
+            handsFreeEnabled = true
+        }
+    }
+
+    private func startHandsFree() {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            gestureDetector.start()
+        case .notDetermined:
+            gestureDetector.start() // start() will request permission internally
+        case .denied, .restricted:
+            handsFreeEnabled = false
+            showCameraPermissionAlert = true
+        @unknown default:
+            break
+        }
     }
 }
 
