@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 // MARK: - Duration formatting
 
@@ -35,4 +36,23 @@ extension View {
 
 extension Color {
     static let kitchenAccent = Color("AccentColor")
+}
+
+// MARK: - UIImage crop
+
+extension UIImage {
+    func cropped(toAspect aspect: CGFloat) -> UIImage {
+        let imageAspect = size.width / size.height
+        var cropRect: CGRect
+        if imageAspect > aspect {
+            let w = size.height * aspect
+            cropRect = CGRect(x: (size.width - w) / 2, y: 0, width: w, height: size.height)
+        } else {
+            let h = size.width / aspect
+            cropRect = CGRect(x: 0, y: (size.height - h) / 2, width: size.width, height: h)
+        }
+        let scaledRect = cropRect.applying(CGAffineTransform(scaleX: scale, y: scale))
+        guard let cg = cgImage?.cropping(to: scaledRect) else { return self }
+        return UIImage(cgImage: cg, scale: scale, orientation: imageOrientation)
+    }
 }

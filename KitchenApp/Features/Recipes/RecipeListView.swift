@@ -7,6 +7,7 @@ struct RecipeListView: View {
     @State private var query = RecipesQuery()
     @State private var searchText = ""
     @State private var showFilterSheet = false
+    @State private var showEditor = false
     @State private var searchDebounceTask: Task<Void, Never>?
 
     var body: some View {
@@ -28,6 +29,15 @@ struct RecipeListView: View {
             }
             .navigationTitle("Рецепты")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showEditor = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .bold()
+                    }
+                    .tint(.orange)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showFilterSheet = true
@@ -38,6 +48,9 @@ struct RecipeListView: View {
                         .foregroundStyle(hasActiveFilters ? .orange : .primary)
                     }
                 }
+            }
+            .sheet(isPresented: $showEditor) {
+                RecipeEditorView()
             }
             .searchable(text: $searchText, prompt: "Поиск рецептов")
             .onChange(of: searchText) { _, newValue in
