@@ -5,14 +5,16 @@ import UIKit
 // MARK: - Duration formatting
 
 extension Int {
-    /// Formats minutes as "1 ч 20 мин" or "45 мин"
+    /// Formats minutes as "1 h 20 min" / "1 ч 20 мин" using Localizable.strings
     var formattedDuration: String {
+        let h = NSLocalizedString("duration.hour", value: "ч",   comment: "")
+        let m = NSLocalizedString("duration.min",  value: "мин", comment: "")
         if self >= 60 {
-            let h = self / 60
-            let m = self % 60
-            return m > 0 ? "\(h) ч \(m) мин" : "\(h) ч"
+            let hours   = self / 60
+            let minutes = self % 60
+            return minutes > 0 ? "\(hours) \(h) \(minutes) \(m)" : "\(hours) \(h)"
         }
-        return "\(self) мин"
+        return "\(self) \(m)"
     }
 
     /// Formats seconds as "MM:SS"

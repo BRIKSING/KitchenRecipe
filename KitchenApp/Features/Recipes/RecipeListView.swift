@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - RecipeListView
 
 struct RecipeListView: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @StateObject private var viewModel = RecipeViewModel()
     @State private var query = RecipesQuery()
     @State private var searchText = ""
@@ -180,8 +181,11 @@ struct RecipeListView: View {
 
     // MARK: - Helpers
 
+    // 2 columns on iPhone, 3–4 on iPad (regular size class)
     private var adaptiveColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 16)]
+        let minimum: CGFloat = horizontalSizeClass == .regular ? 200 : 155
+        let maximum: CGFloat = horizontalSizeClass == .regular ? 280 : 240
+        return [GridItem(.adaptive(minimum: minimum, maximum: maximum), spacing: 16)]
     }
 
     private func scheduleSearch(_ text: String) {
@@ -248,6 +252,14 @@ struct RecipeCardView: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.08), radius: 4, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            String(format: NSLocalizedString("accessibility.recipe_card",
+                                             value: "%@, %@, %@", comment: ""),
+                   recipe.title,
+                   recipe.difficulty.localizedName,
+                   recipe.cookTimeMin.formattedDuration)
+        )
     }
 }
 
@@ -265,6 +277,11 @@ struct FilterChip: View {
                 Image(systemName: "xmark")
                     .font(.caption2.bold())
             }
+            .accessibilityLabel(
+                String(format: NSLocalizedString("accessibility.remove_filter",
+                                                 value: "Убрать фильтр %@", comment: ""),
+                       label)
+            )
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)

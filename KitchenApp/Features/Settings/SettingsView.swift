@@ -235,9 +235,9 @@ struct SettingsView: View {
 
     private var sensitivityLabel: String {
         switch swipeSensitivity {
-        case ..<0.03: return "Высокая"
-        case 0.03..<0.06: return "Средняя"
-        default: return "Низкая"
+        case ..<0.03:    return NSLocalizedString("sensitivity.high",   value: "Высокая", comment: "")
+        case 0.03..<0.06: return NSLocalizedString("sensitivity.medium", value: "Средняя", comment: "")
+        default:          return NSLocalizedString("sensitivity.low",    value: "Низкая",  comment: "")
         }
     }
 

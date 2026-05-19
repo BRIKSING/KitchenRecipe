@@ -165,6 +165,8 @@ struct RecipeDetailView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     // MARK: - Tags
@@ -326,6 +328,7 @@ struct RecipeDetailView: View {
                 .padding(.bottom, 8)
         }
         .background(.ultraThinMaterial)
+        .accessibilityHint("Открывает пошаговый режим приготовления")
     }
 
     // MARK: - Offline cache

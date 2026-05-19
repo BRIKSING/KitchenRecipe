@@ -32,9 +32,9 @@ enum Difficulty: String, Codable, CaseIterable {
 
     var localizedName: String {
         switch self {
-        case .easy:   return "Лёгкий"
-        case .medium: return "Средний"
-        case .hard:   return "Сложный"
+        case .easy:   return NSLocalizedString("difficulty.easy",   value: "Лёгкий",  comment: "")
+        case .medium: return NSLocalizedString("difficulty.medium", value: "Средний", comment: "")
+        case .hard:   return NSLocalizedString("difficulty.hard",   value: "Сложный", comment: "")
         }
     }
 }

@@ -1,0 +1,125 @@
+/* =============================
+   Kitchen Recipe — English
+   ============================= */
+
+/* Difficulty */
+"difficulty.easy"   = "Easy";
+"difficulty.medium" = "Medium";
+"difficulty.hard"   = "Hard";
+
+/* Sensitivity */
+"sensitivity.high"   = "High";
+"sensitivity.medium" = "Medium";
+"sensitivity.low"    = "Low";
+
+/* Duration units */
+"duration.hour" = "h";
+"duration.min"  = "min";
+
+/* Tab bar */
+"Рецепты"    = "Recipes";
+"Категории"  = "Categories";
+"Профиль"    = "Profile";
+
+/* Recipe List — titles & states */
+"Поиск рецептов"                                       = "Search recipes";
+"Рецепты не найдены"                                   = "No Recipes Found";
+"Попробуйте изменить фильтры или поисковый запрос"     = "Try changing your filters or search query";
+"Не удалось загрузить рецепты"                         = "Failed to Load Recipes";
+"Повторить"                                            = "Retry";
+"Сбросить всё"                                         = "Reset all";
+
+/* Filters */
+"Фильтры"           = "Filters";
+"Категория"         = "Category";
+"Любая"             = "Any";
+"Сложность"         = "Difficulty";
+"Максимальное время" = "Max time";
+"Не ограничено"     = "No limit";
+"Сбросить"          = "Reset";
+"Отмена"            = "Cancel";
+"Применить"         = "Apply";
+
+/* Recipe Detail */
+"Офлайн — кэшированные данные"  = "Offline — cached data";
+"Нет соединения — показаны кэшированные данные" = "No connection — showing cached data";
+"Время"                          = "Time";
+"Порции"                         = "Servings";
+"Читать далее"                   = "Read more";
+"Свернуть"                       = "Collapse";
+"Ингредиенты"                    = "Ingredients";
+"Шаги приготовления"             = "Cooking Steps";
+"Начать приготовление"           = "Start Cooking";
+
+/* Cooking Session */
+"Назад"                     = "Back";
+"Вперёд"                    = "Next";
+"Готово"                    = "Done";
+"Готово!"                   = "Done!";
+"Приятного аппетита!"       = "Enjoy your meal!";
+"Оценить рецепт"            = "Rate Recipe";
+"Закрыть"                   = "Close";
+"Нет доступа к камере"      = "No Camera Access";
+"Время вышло!"              = "Time's up!";
+"Разрешите доступ к камере в настройках, чтобы использовать управление жестами." = "Allow camera access in Settings to use gesture control.";
+"Hands-free: включён"       = "Hands-free: ON";
+"Hands-free: выключен"      = "Hands-free: OFF";
+
+/* Settings */
+"Настройки"                 = "Settings";
+"Сервер"                    = "Server";
+"URL сервера"               = "Server URL";
+"Проверить доступность"     = "Check availability";
+"Проверка..."               = "Checking...";
+"Сервер недоступен"         = "Server unavailable";
+"Нет ответа"                = "No response";
+"Некорректный URL"          = "Invalid URL";
+"Hands-Free (управление жестами)" = "Hands-Free (Gesture Control)";
+"Включать по умолчанию"     = "Enable by default";
+"Чувствительность свайпа"   = "Swipe sensitivity";
+"Меньше = реагирует на небольшое движение" = "Lower = responds to small movements";
+"Удержание кулака"          = "Fist hold duration";
+"Видеопоток обрабатывается только на устройстве и никогда не передаётся на сервер." = "The video stream is processed only on-device and is never sent to the server.";
+"Доступ к камере"           = "Camera Access";
+"Разрешён"                  = "Allowed";
+"Открыть настройки"         = "Open Settings";
+"Запросить"                 = "Request";
+"Таймер"                    = "Timer";
+"Звук по окончании"         = "Sound on finish";
+"Вибрация по окончании"     = "Vibration on finish";
+"Язык интерфейса"           = "Interface Language";
+"Системный"                 = "System";
+"Русский"                   = "Russian";
+"Аккаунт"                   = "Account";
+"Выйти"                     = "Sign Out";
+"Удалить аккаунт"           = "Delete Account";
+"Удалить аккаунт?"          = "Delete Account?";
+"Все данные будут удалены без возможности восстановления." = "All data will be permanently deleted.";
+"Удалить"                   = "Delete";
+"О приложении"              = "About";
+"Версия"                    = "Version";
+"Лицензии"                  = "Licenses";
+
+/* Auth */
+"Войти"                             = "Sign In";
+"Пароль"                            = "Password";
+"Нет аккаунта? Зарегистрироваться"  = "Don't have an account? Register";
+"Уже есть аккаунт? Войти"           = "Already have an account? Sign In";
+"Имя пользователя"                  = "Username";
+"Создать аккаунт"                   = "Create Account";
+
+/* Sidebar (iPad) */
+"sidebar.title" = "Kitchen";
+
+/* Accessibility */
+"accessibility.prev_step"       = "Previous step";
+"accessibility.next_step"       = "Next step";
+"accessibility.finish_cooking"  = "Finish cooking";
+"accessibility.timer_play"      = "Start timer";
+"accessibility.timer_pause"     = "Pause timer";
+"accessibility.timer_reset"     = "Reset timer";
+"accessibility.remove_filter"   = "Remove filter %@";
+"accessibility.handsfree_on"    = "Hands-free on, double-tap to disable";
+"accessibility.handsfree_off"   = "Hands-free off, double-tap to enable";
+"accessibility.step_progress"   = "Step %d of %d";
+"accessibility.recipe_card"     = "%@, %@, %@";

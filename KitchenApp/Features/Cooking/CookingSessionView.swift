@@ -128,11 +128,17 @@ struct CookingSessionView: View {
                     .clipShape(Circle())
             }
             .foregroundStyle(.primary)
+            .accessibilityLabel("Выйти из режима приготовления")
 
             Spacer()
 
             Text("Шаг \(currentStepIndex + 1) из \(totalSteps)")
                 .font(.subheadline.bold())
+                .accessibilityLabel(
+                    String(format: NSLocalizedString("accessibility.step_progress",
+                                                     value: "Шаг %d из %d", comment: ""),
+                           currentStepIndex + 1, totalSteps)
+                )
 
             Spacer()
 
@@ -150,6 +156,15 @@ struct CookingSessionView: View {
                 .foregroundStyle(handsFreeEnabled ? .white : .primary)
                 .clipShape(Capsule())
             }
+            .accessibilityLabel(
+                NSLocalizedString(
+                    handsFreeEnabled ? "accessibility.handsfree_on" : "accessibility.handsfree_off",
+                    value: handsFreeEnabled
+                        ? "Hands-free включён, дважды нажмите для выключения"
+                        : "Hands-free выключен, дважды нажмите для включения",
+                    comment: ""
+                )
+            )
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -298,6 +313,13 @@ struct CookingSessionView: View {
                     .clipShape(Circle())
             }
             .disabled(timer.isFinished)
+            .accessibilityLabel(
+                NSLocalizedString(
+                    timer.isRunning ? "accessibility.timer_pause" : "accessibility.timer_play",
+                    value: timer.isRunning ? "Пауза таймера" : "Запустить таймер",
+                    comment: ""
+                )
+            )
 
             Button {
                 if let timerSec = currentStep.timerSec {
@@ -312,6 +334,9 @@ struct CookingSessionView: View {
                     .background(Color(.tertiarySystemBackground))
                     .clipShape(Circle())
             }
+            .accessibilityLabel(
+                NSLocalizedString("accessibility.timer_reset", value: "Сбросить таймер", comment: "")
+            )
         }
         .padding(14)
         .background(Color(.secondarySystemBackground))
@@ -336,9 +361,13 @@ struct CookingSessionView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .disabled(currentStepIndex == 0)
+                .accessibilityLabel(
+                    NSLocalizedString("accessibility.prev_step", value: "Предыдущий шаг", comment: "")
+                )
 
                 stepDots
                     .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
 
                 Button {
                     navigateNext()
@@ -352,6 +381,17 @@ struct CookingSessionView: View {
                     .foregroundStyle(Color.orange)
                     .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+                .accessibilityLabel(
+                    NSLocalizedString(
+                        currentStepIndex == totalSteps - 1
+                            ? "accessibility.finish_cooking"
+                            : "accessibility.next_step",
+                        value: currentStepIndex == totalSteps - 1
+                            ? "Завершить приготовление"
+                            : "Следующий шаг",
+                        comment: ""
+                    )
+                )
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 14)

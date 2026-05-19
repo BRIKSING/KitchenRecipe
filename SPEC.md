@@ -653,13 +653,14 @@ const envSchema = z.object({
 
 ### Этап 13 — Финализация и полировка
 
-- [ ] Локализация: RU + EN (Localizable.strings)
-- [ ] Адаптация лейаутов для iPad (landscape + portrait)
-- [ ] Dark Mode поддержка
-- [ ] Accessibility (VoiceOver labels, Dynamic Type)
-- [ ] App Icon и Launch Screen
+- [x] Локализация: RU + EN (Localizable.strings)
+- [x] Адаптация лейаутов для iPad (landscape + portrait)
+- [x] Dark Mode поддержка
+- [x] Accessibility (VoiceOver labels, Dynamic Type)
+- [x] App Icon и Launch Screen
 - [ ] Тестфлайт-сборка + smoke-test на реальном устройстве
 - [ ] Финальный ревью безопасности (Keychain, HTTPS, camera privacy)
+// в процессе: реализовано Localizable.strings (RU+EN) для всех экранов; NSLocalizedString в Difficulty.localizedName, formattedDuration, sensitivityLabel; NavigationSplitView для iPad; адаптивные колонки грида (3-4 на iPad); AccentColor.colorset с Dark Mode вариантом; AppIcon.appiconset; VoiceOver labels в RecipeCardView, FilterChip, кнопках навигации CookingSession, таймере, hands-free. Осталось: Testflight-сборка и финальный security review.
 
 ---
 
