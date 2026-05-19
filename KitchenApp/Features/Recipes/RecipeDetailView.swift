@@ -1,13 +1,16 @@
 import SwiftUI
+import SwiftData
 
 struct RecipeDetailView: View {
     let recipeId: UUID
 
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel = RecipeViewModel()
     @State private var recipe: Recipe?
     @State private var isDescriptionExpanded = false
     @State private var servingsMultiplier: Double = 1.0
     @State private var startCooking = false
+    @State private var isOfflineMode = false
 
     private let multipliers: [(label: String, value: Double)] = [
         ("×½", 0.5), ("×1", 1.0), ("×2", 2.0), ("×3", 3.0)
@@ -23,9 +26,7 @@ struct RecipeDetailView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            recipe = try? await viewModel.loadDetail(id: recipeId)
-        }
+        .task { await loadRecipe() }
         .fullScreenCover(isPresented: $startCooking) {
             if let recipe {
                 CookingSessionView(recipe: recipe)
@@ -57,6 +58,23 @@ struct RecipeDetailView: View {
             startCookingButton
         }
         .navigationTitle(recipe.title)
+        .safeAreaInset(edge: .top) {
+            if isOfflineMode {
+                offlineBanner
+            }
+        }
+    }
+
+    private var offlineBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+            Text("Офлайн — кэшированные данные")
+                .font(.caption.bold())
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(Color.orange.gradient)
     }
 
     // MARK: - Hero with parallax
@@ -308,6 +326,49 @@ struct RecipeDetailView: View {
                 .padding(.bottom, 8)
         }
         .background(.ultraThinMaterial)
+    }
+
+    // MARK: - Offline cache
+
+    private func loadRecipe() async {
+        do {
+            let r = try await viewModel.loadDetail(id: recipeId)
+            recipe = r
+            isOfflineMode = false
+            cacheRecipe(r)
+        } catch NetworkError.noConnection {
+            if let cached = loadCachedRecipe() {
+                recipe = cached
+                isOfflineMode = true
+                ErrorBannerState.shared.show("Нет соединения — показаны кэшированные данные")
+            }
+        } catch {
+            ErrorBannerState.shared.show(error)
+        }
+    }
+
+    private func cacheRecipe(_ r: Recipe) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(r) else { return }
+        let idStr = r.id.uuidString
+        let descriptor = FetchDescriptor<CachedRecipeDetail>(
+            predicate: #Predicate { $0.recipeId == idStr }
+        )
+        if let existing = try? modelContext.fetch(descriptor).first {
+            existing.recipeData = data
+            existing.cachedAt = Date()
+        } else {
+            modelContext.insert(CachedRecipeDetail(recipeId: r.id, recipeData: data, title: r.title))
+        }
+    }
+
+    private func loadCachedRecipe() -> Recipe? {
+        let idStr = recipeId.uuidString
+        let descriptor = FetchDescriptor<CachedRecipeDetail>(
+            predicate: #Predicate { $0.recipeId == idStr }
+        )
+        return try? modelContext.fetch(descriptor).first?.decode()
     }
 
     // MARK: - Helpers

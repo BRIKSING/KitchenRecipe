@@ -10,7 +10,7 @@ struct User: Decodable, Identifiable {
 
 // MARK: - Category
 
-struct RecipeCategory: Decodable, Identifiable, Hashable {
+struct RecipeCategory: Codable, Identifiable, Hashable {
     let id: UUID
     let name: String
     let slug: String
@@ -18,14 +18,14 @@ struct RecipeCategory: Decodable, Identifiable, Hashable {
 
 // MARK: - Tag
 
-struct Tag: Decodable, Identifiable, Hashable {
+struct Tag: Codable, Identifiable, Hashable {
     let id: UUID
     let name: String
 }
 
 // MARK: - Difficulty
 
-enum Difficulty: String, Decodable, CaseIterable {
+enum Difficulty: String, Codable, CaseIterable {
     case easy
     case medium
     case hard
@@ -41,7 +41,7 @@ enum Difficulty: String, Decodable, CaseIterable {
 
 // MARK: - StepPhoto
 
-struct StepPhoto: Decodable, Identifiable {
+struct StepPhoto: Codable, Identifiable {
     let id: UUID
     let url: URL
     let sortOrder: Int
@@ -55,7 +55,7 @@ struct StepPhoto: Decodable, Identifiable {
 
 // MARK: - Step
 
-struct Step: Decodable, Identifiable {
+struct Step: Codable, Identifiable {
     let id: UUID
     let sortOrder: Int
     let title: String
@@ -75,7 +75,7 @@ struct Step: Decodable, Identifiable {
 
 // MARK: - Ingredient
 
-struct Ingredient: Decodable, Identifiable {
+struct Ingredient: Codable, Identifiable {
     let id: UUID
     let name: String
     let amount: Double
@@ -117,7 +117,7 @@ struct RecipeListItem: Decodable, Identifiable {
 
 // MARK: - Recipe (full detail)
 
-struct Recipe: Decodable, Identifiable {
+struct Recipe: Codable, Identifiable {
     let id: UUID
     let title: String
     let description: String?

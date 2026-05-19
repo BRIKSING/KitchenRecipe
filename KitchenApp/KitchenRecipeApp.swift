@@ -17,6 +17,6 @@ struct KitchenRecipeApp: App {
             .environmentObject(authViewModel)
             .errorBanner()
         }
-        .modelContainer(for: [DraftRecipe.self])
+        .modelContainer(for: [DraftRecipe.self, CachedRecipeDetail.self])
     }
 }
