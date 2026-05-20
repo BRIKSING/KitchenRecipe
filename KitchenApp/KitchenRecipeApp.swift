@@ -5,6 +5,10 @@ import SwiftData
 struct KitchenRecipeApp: App {
     @StateObject private var authViewModel = AuthViewModel()
 
+    init() {
+        SecurityAudit.run()
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {

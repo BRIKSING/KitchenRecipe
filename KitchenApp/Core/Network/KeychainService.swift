@@ -26,10 +26,14 @@ enum KeychainService {
 
     private static func save(_ value: String, key: String) {
         guard let data = value.data(using: .utf8) else { return }
+        // kSecAttrAccessibleWhenUnlockedThisDeviceOnly:
+        //   - tokens are unreadable while the device is locked
+        //   - prevents migration to other devices via iCloud Keychain or encrypted backups
         let query: [CFString: Any] = [
-            kSecClass:       kSecClassGenericPassword,
-            kSecAttrAccount: key,
-            kSecValueData:   data
+            kSecClass:          kSecClassGenericPassword,
+            kSecAttrAccount:    key,
+            kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecValueData:      data
         ]
         SecItemDelete(query as CFDictionary)
         SecItemAdd(query as CFDictionary, nil)
@@ -37,10 +41,10 @@ enum KeychainService {
 
     private static func load(key: String) -> String? {
         let query: [CFString: Any] = [
-            kSecClass:            kSecClassGenericPassword,
-            kSecAttrAccount:      key,
-            kSecReturnData:       true,
-            kSecMatchLimit:       kSecMatchLimitOne
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrAccount: key,
+            kSecReturnData:  true,
+            kSecMatchLimit:  kSecMatchLimitOne
         ]
         var item: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,

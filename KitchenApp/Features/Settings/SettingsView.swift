@@ -53,6 +53,18 @@ struct SettingsView: View {
                     serverCheckState = .idle
                 }
 
+            if isInsecureURL {
+                Label {
+                    Text("Незащищённое соединение (HTTP). В продакшене используйте HTTPS — иначе токены и данные передаются в открытом виде.")
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "lock.open.trianglebadge.exclamationmark.fill")
+                }
+                .foregroundStyle(.red)
+                .accessibilityLabel("Предупреждение: незащищённое HTTP соединение")
+            }
+
             HStack {
                 switch serverCheckState {
                 case .idle:
@@ -76,6 +88,13 @@ struct SettingsView: View {
         } header: {
             Text("Сервер")
         }
+    }
+
+    /// true when URL is HTTP and not a local development address
+    private var isInsecureURL: Bool {
+        let url = serverURL.lowercased()
+        guard url.hasPrefix("http://") else { return false }
+        return !url.hasPrefix("http://localhost") && !url.hasPrefix("http://127.")
     }
 
     // MARK: - Hands-Free section
