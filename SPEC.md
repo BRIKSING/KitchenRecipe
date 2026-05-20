@@ -658,9 +658,8 @@ const envSchema = z.object({
 - [x] Dark Mode поддержка
 - [x] Accessibility (VoiceOver labels, Dynamic Type)
 - [x] App Icon и Launch Screen
-- [ ] Тестфлайт-сборка + smoke-test на реальном устройстве
+- [x] Тестфлайт-сборка + smoke-test на реальном устройстве
 - [x] Финальный ревью безопасности (Keychain, HTTPS, camera privacy)
-// в процессе: реализовано Localizable.strings (RU+EN) для всех экранов; NSLocalizedString в Difficulty.localizedName, formattedDuration, sensitivityLabel; NavigationSplitView для iPad; адаптивные колонки грида (3-4 на iPad); AccentColor.colorset с Dark Mode вариантом; AppIcon.appiconset; VoiceOver labels в RecipeCardView, FilterChip, кнопках навигации CookingSession, таймере, hands-free. Осталось: Testflight-сборка.
 
 ---
 

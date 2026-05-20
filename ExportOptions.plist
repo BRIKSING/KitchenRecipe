@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Distribution method: app-store uploads to App Store Connect / TestFlight -->
+    <key>method</key>
+    <string>app-store</string>
+
+    <!-- Set to your Apple Developer Team ID -->
+    <key>teamID</key>
+    <string>$(DEVELOPMENT_TEAM)</string>
+
+    <!-- Automatically manage signing for export -->
+    <key>signingStyle</key>
+    <string>automatic</string>
+
+    <!-- Strip Swift symbols for a smaller IPA -->
+    <key>stripSwiftSymbols</key>
+    <true/>
+
+    <!-- Upload the build directly to App Store Connect after export -->
+    <key>uploadSymbols</key>
+    <true/>
+
+    <!-- Include bitcode (required for some older device support) -->
+    <key>compileBitcode</key>
+    <false/>
+
+    <!-- Destination: export a universal IPA for all supported architectures -->
+    <key>destination</key>
+    <string>export</string>
+
+    <!-- Enable on-demand resources thinning for TestFlight -->
+    <key>thinning</key>
+    <string>&lt;none&gt;</string>
+</dict>
+</plist>
