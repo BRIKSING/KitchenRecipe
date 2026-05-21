@@ -9,6 +9,7 @@ struct RecipeEditorView: View {
 
     @State private var showDiscardAlert = false
     @State private var categories: [RecipeCategory] = []
+    @State private var tagSearchText = ""
 
     private let units = ["г", "кг", "мл", "л", "шт", "ст.л.", "ч.л.", "стакан", "щепотка"]
 
@@ -19,6 +20,7 @@ struct RecipeEditorView: View {
                     basicInfoSection
                     coverSection
                     difficultyTimeSection
+                    tagsSection
                     ingredientsSection
                     stepsSection
                     Color.clear.frame(height: 60)
@@ -54,6 +56,7 @@ struct RecipeEditorView: View {
             vm.loadLatestDraft(context: modelContext)
             vm.startAutosave(context: modelContext)
             await loadCategories()
+            await vm.loadTags()
         }
         .onDisappear {
             vm.stopAutosave()
@@ -159,6 +162,57 @@ struct RecipeEditorView: View {
                 "Порции: \(vm.servings)",
                 value: $vm.servings, in: 1...100
             )
+        }
+    }
+
+    // MARK: - Tags section
+
+    private var tagsSection: some View {
+        Section {
+            TextField("Поиск тегов...", text: $tagSearchText)
+                .autocorrectionDisabled()
+                .onChange(of: tagSearchText) { _, query in
+                    Task { await vm.loadTags(query: query.isEmpty ? nil : query) }
+                }
+
+            if vm.availableTags.isEmpty && tagSearchText.isEmpty {
+                Text("Теги загружаются...")
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+            } else if vm.availableTags.isEmpty {
+                Text("Теги не найдены")
+                    .foregroundStyle(.secondary)
+                    .font(.subheadline)
+            } else {
+                ForEach(vm.availableTags) { tag in
+                    Button {
+                        vm.toggleTag(tag)
+                    } label: {
+                        HStack {
+                            Text("#\(tag.name)")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Image(
+                                systemName: vm.selectedTagIds.contains(tag.id)
+                                    ? "checkmark.circle.fill"
+                                    : "circle"
+                            )
+                            .foregroundStyle(
+                                vm.selectedTagIds.contains(tag.id) ? .orange : .secondary
+                            )
+                        }
+                    }
+                }
+            }
+        } header: {
+            HStack {
+                Text("Теги")
+                if !vm.selectedTagIds.isEmpty {
+                    Text("· \(vm.selectedTagIds.count) выбрано")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
         }
     }
 

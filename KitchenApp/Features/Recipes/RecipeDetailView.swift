@@ -58,11 +58,32 @@ struct RecipeDetailView: View {
             startCookingButton
         }
         .navigationTitle(recipe.title)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ShareLink(
+                    item: shareText(for: recipe),
+                    subject: Text(recipe.title),
+                    message: Text(recipe.description ?? "")
+                ) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .tint(.orange)
+            }
+        }
         .safeAreaInset(edge: .top) {
             if isOfflineMode {
                 offlineBanner
             }
         }
+    }
+
+    private func shareText(for recipe: Recipe) -> String {
+        var parts: [String] = [recipe.title]
+        if let desc = recipe.description, !desc.isEmpty {
+            parts.append(desc)
+        }
+        parts.append("kitchenrecipe://recipe/\(recipe.id.uuidString)")
+        return parts.joined(separator: "\n\n")
     }
 
     private var offlineBanner: some View {

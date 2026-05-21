@@ -60,6 +60,8 @@ final class EditorViewModel: ObservableObject {
     @Published var coverImage: UIImage?
     @Published var ingredients: [DraftIngredient] = [DraftIngredient()]
     @Published var steps: [DraftStep] = [DraftStep()]
+    @Published var selectedTagIds: Set<UUID> = []
+    @Published var availableTags: [Tag] = []
 
     // MARK: UI state
 
@@ -76,6 +78,24 @@ final class EditorViewModel: ObservableObject {
 
     init(existingRecipeId: UUID? = nil) {
         self.existingRecipeId = existingRecipeId
+    }
+
+    // MARK: - Tags
+
+    func loadTags(query: String? = nil) async {
+        do {
+            let tags: [Tag] = try await api.request(.tags(q: query))
+            availableTags = tags
+        } catch {}
+    }
+
+    func toggleTag(_ tag: Tag) {
+        if selectedTagIds.contains(tag.id) {
+            selectedTagIds.remove(tag.id)
+        } else {
+            selectedTagIds.insert(tag.id)
+        }
+        isDirty = true
     }
 
     // MARK: - Cover image
@@ -143,6 +163,9 @@ final class EditorViewModel: ObservableObject {
                            timerEnabled: $0.timerEnabled, timerMin: $0.timerMinutes, timerSec: $0.timerSeconds) }
         )
 
+        struct ST: Encodable { let id: String }
+        draft.tagsJSON = try? enc.encode(Array(selectedTagIds).map { ST(id: $0.uuidString) })
+
         try? context.save()
     }
 
@@ -183,6 +206,12 @@ final class EditorViewModel: ObservableObject {
                           timerEnabled: $0.timerEnabled, timerMinutes: $0.timerMin, timerSeconds: $0.timerSec)
             }
         }
+
+        struct ST: Decodable { let id: String }
+        if let data = draft.tagsJSON,
+           let arr = try? JSONDecoder().decode([ST].self, from: data) {
+            selectedTagIds = Set(arr.compactMap { UUID(uuidString: $0.id) })
+        }
     }
 
     func deleteDraft(context: ModelContext) {
@@ -222,7 +251,8 @@ final class EditorViewModel: ObservableObject {
                 categoryId: selectedCategory?.id,
                 difficulty: difficulty.rawValue,
                 cookTimeMin: cookTimeMin,
-                servings: servings
+                servings: servings,
+                tagIds: selectedTagIds.isEmpty ? nil : Array(selectedTagIds)
             )
             let created: RecipeIDResponse = try await api.request(.createRecipe(req), body: req)
             let recipeId = created.id

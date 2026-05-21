@@ -45,6 +45,7 @@ struct RecipeCreateRequest: Encodable {
     let difficulty: String
     let cookTimeMin: Int
     let servings: Int
+    let tagIds: [UUID]?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -53,6 +54,7 @@ struct RecipeCreateRequest: Encodable {
         case difficulty
         case cookTimeMin = "cook_time_min"
         case servings
+        case tagIds      = "tag_ids"
     }
 }
 
