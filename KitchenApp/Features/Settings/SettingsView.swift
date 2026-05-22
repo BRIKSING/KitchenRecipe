@@ -214,6 +214,13 @@ struct SettingsView: View {
 
     private var accountSection: some View {
         Section("Аккаунт") {
+            if let username = authVM.userUsername {
+                LabeledContent("Пользователь", value: username)
+            }
+            if let email = authVM.userEmail {
+                LabeledContent("Email", value: email)
+            }
+
             Button("Выйти", role: .destructive) {
                 authVM.logout()
             }
