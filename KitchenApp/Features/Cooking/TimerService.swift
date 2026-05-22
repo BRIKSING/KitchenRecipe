@@ -40,8 +40,14 @@ final class TimerService: ObservableObject {
                 if self.remaining == 0 {
                     self.isRunning = false
                     self.isFinished = true
-                    AudioServicesPlaySystemSound(1315)
-                    AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                    let soundEnabled = UserDefaults.standard.object(forKey: "timer.sound") as? Bool ?? true
+                    let hapticEnabled = UserDefaults.standard.object(forKey: "timer.haptic") as? Bool ?? true
+                    if soundEnabled {
+                        AudioServicesPlaySystemSound(1315)
+                    }
+                    if hapticEnabled {
+                        AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                    }
                 }
             }
         }
