@@ -1,4 +1,5 @@
 import SwiftUI
+import Speech
 
 struct CookingSessionView: View {
     let recipe: Recipe
@@ -13,12 +14,15 @@ struct CookingSessionView: View {
     @State private var showCompletion = false
     @StateObject private var timer = TimerService()
     @StateObject private var gestureDetector = HandGestureDetector()
+    @StateObject private var voiceService = VoiceCommandService()
 
     // Per-step timer state: [stepIndex: (remaining, isFinished)]
     @State private var timerStates: [Int: (remaining: Int, isFinished: Bool)] = [:]
 
     @State private var handsFreeEnabled = false
     @State private var showCameraPermissionAlert = false
+    @State private var voiceEnabled = false
+    @State private var showVoicePermissionAlert = false
 
     // Photo viewer
     @State private var photoPage = 0
@@ -50,6 +54,12 @@ struct CookingSessionView: View {
                 isActive: handsFreeEnabled
             )
 
+            // Voice command overlay (top of screen)
+            VoiceCommandOverlayView(
+                command: voiceService.lastCommand,
+                isActive: voiceEnabled
+            )
+
             if showCompletion {
                 CompletionView { dismiss() }
                     .transition(.opacity)
@@ -60,11 +70,16 @@ struct CookingSessionView: View {
             UIApplication.shared.isIdleTimerDisabled = true
             configureTimerForStep(0)
             wireGestureDetector()
+            wireVoiceCommands()
+            if UserDefaults.standard.bool(forKey: "voice.enabledByDefault") {
+                Task { await startVoiceCommands() }
+            }
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             timer.stop()
             gestureDetector.stop()
+            voiceService.stop()
         }
         .onChange(of: currentStepIndex) { oldIndex, newIndex in
             saveTimerState(for: oldIndex)
@@ -82,10 +97,23 @@ struct CookingSessionView: View {
                 gestureDetector.stop()
             }
         }
+        .onChange(of: voiceEnabled) { _, enabled in
+            if enabled {
+                Task { await startVoiceCommands() }
+            } else {
+                voiceService.stop()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active, handsFreeEnabled {
-                gestureDetector.stop()
-                handsFreeEnabled = false
+            if phase != .active {
+                if handsFreeEnabled {
+                    gestureDetector.stop()
+                    handsFreeEnabled = false
+                }
+                if voiceEnabled {
+                    voiceService.stop()
+                    voiceEnabled = false
+                }
             }
         }
         .alert("Нет доступа к камере", isPresented: $showCameraPermissionAlert) {
@@ -97,6 +125,16 @@ struct CookingSessionView: View {
             Button("Отмена", role: .cancel) { handsFreeEnabled = false }
         } message: {
             Text("Разрешите доступ к камере в настройках, чтобы использовать управление жестами.")
+        }
+        .alert("Нет доступа к микрофону", isPresented: $showVoicePermissionAlert) {
+            Button("Открыть настройки") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Отмена", role: .cancel) { voiceEnabled = false }
+        } message: {
+            Text("Разрешите доступ к микрофону и распознаванию речи в настройках для голосового управления.")
         }
     }
 
@@ -406,19 +444,42 @@ struct CookingSessionView: View {
                     }
             )
 
-            Button {
-                handsFreeEnabled.toggle()
-            } label: {
-                Label(
-                    handsFreeEnabled ? "Hands-free: включён" : "Hands-free: выключен",
-                    systemImage: "eye"
+            HStack(spacing: 12) {
+                Button {
+                    handsFreeEnabled.toggle()
+                } label: {
+                    Label(
+                        handsFreeEnabled ? "Жесты: вкл" : "Жесты",
+                        systemImage: "eye"
+                    )
+                    .font(.caption.bold())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(handsFreeEnabled ? Color.orange.opacity(0.15) : Color(.tertiarySystemBackground))
+                    .foregroundStyle(handsFreeEnabled ? .orange : .secondary)
+                    .clipShape(Capsule())
+                }
+                .accessibilityLabel(
+                    handsFreeEnabled ? "Выключить Hands-free жесты" : "Включить Hands-free жесты"
                 )
-                .font(.caption.bold())
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(handsFreeEnabled ? Color.orange.opacity(0.15) : Color(.tertiarySystemBackground))
-                .foregroundStyle(handsFreeEnabled ? .orange : .secondary)
-                .clipShape(Capsule())
+
+                Button {
+                    voiceEnabled.toggle()
+                } label: {
+                    Label(
+                        voiceEnabled ? "Голос: вкл" : "Голос",
+                        systemImage: voiceEnabled ? "mic.fill" : "mic"
+                    )
+                    .font(.caption.bold())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(voiceEnabled ? Color.blue.opacity(0.15) : Color(.tertiarySystemBackground))
+                    .foregroundStyle(voiceEnabled ? .blue : .secondary)
+                    .clipShape(Capsule())
+                }
+                .accessibilityLabel(
+                    voiceEnabled ? "Выключить голосовые команды" : "Включить голосовые команды"
+                )
             }
             .padding(.bottom, 12)
         }
@@ -515,6 +576,35 @@ struct CookingSessionView: View {
             showCameraPermissionAlert = true
         @unknown default:
             break
+        }
+    }
+
+    // MARK: - Voice commands
+
+    private func wireVoiceCommands() {
+        voiceService.onCommand = { [self] cmd in
+            switch cmd {
+            case .nextStep:    navigateNext()
+            case .prevStep:    navigatePrev()
+            case .toggleTimer: timer.toggle()
+            case .stopCooking: dismiss()
+            }
+        }
+    }
+
+    private func startVoiceCommands() async {
+        if voiceService.speechAuthStatus == .notDetermined {
+            await voiceService.requestPermissions()
+        }
+        switch voiceService.speechAuthStatus {
+        case .authorized:
+            voiceService.start()
+            voiceEnabled = true
+        case .denied, .restricted:
+            voiceEnabled = false
+            showVoicePermissionAlert = true
+        default:
+            voiceEnabled = false
         }
     }
 }

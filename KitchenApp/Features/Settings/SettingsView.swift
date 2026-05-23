@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Speech
 
 struct SettingsView: View {
     @EnvironmentObject private var authVM: AuthViewModel
@@ -13,6 +14,10 @@ struct SettingsView: View {
     @State private var swipeSensitivity = UserDefaults.standard.double(forKey: "handsfree.swipeSensitivity").nonzero(default: 0.04)
     @State private var fistHoldDuration = UserDefaults.standard.double(forKey: "handsfree.fistHoldDuration").nonzero(default: 1.0)
     @State private var cameraStatus: AVAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
+
+    // Voice commands
+    @State private var voiceDefault = UserDefaults.standard.bool(forKey: "voice.enabledByDefault")
+    @State private var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = SFSpeechRecognizer.authorizationStatus()
 
     // Notifications
     @State private var timerSound = UserDefaults.standard.object(forKey: "timer.sound") as? Bool ?? true
@@ -29,6 +34,7 @@ struct SettingsView: View {
             Form {
                 serverSection
                 handsFreeSection
+                voiceCommandsSection
                 notificationsSection
                 languageSection
                 accountSection
@@ -180,6 +186,60 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Voice commands section
+
+    private var voiceCommandsSection: some View {
+        Section {
+            speechPermissionRow
+
+            Toggle("Включать по умолчанию", isOn: $voiceDefault)
+                .onChange(of: voiceDefault) { _, new in
+                    UserDefaults.standard.set(new, forKey: "voice.enabledByDefault")
+                }
+
+            NavigationLink("Список команд") {
+                VoiceCommandsHelpView()
+            }
+        } header: {
+            Text("Голосовые команды")
+        } footer: {
+            Text("Голос обрабатывается локально через Apple Speech Recognition. Аудио не передаётся на серверы приложения.")
+        }
+    }
+
+    private var speechPermissionRow: some View {
+        HStack {
+            Label("Распознавание речи", systemImage: "mic.fill")
+            Spacer()
+            switch speechAuthStatus {
+            case .authorized:
+                Text("Разрешено")
+                    .foregroundStyle(.green)
+                    .font(.subheadline)
+            case .denied, .restricted:
+                Button("Открыть настройки") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.orange)
+            case .notDetermined:
+                Button("Запросить") {
+                    SFSpeechRecognizer.requestAuthorization { status in
+                        DispatchQueue.main.async {
+                            speechAuthStatus = status
+                        }
+                    }
+                }
+                .font(.subheadline)
+                .foregroundStyle(.orange)
+            @unknown default:
+                EmptyView()
+            }
+        }
+    }
+
     // MARK: - Notifications section
 
     private var notificationsSection: some View {
@@ -297,6 +357,50 @@ private enum ServerCheckState {
     case checking
     case ok(Int)
     case fail(String)
+}
+
+// MARK: - Voice commands help view
+
+private struct VoiceCommandsHelpView: View {
+    private let commands: [(phrase: String, action: String)] = [
+        ("«Следующий» / «Вперёд»",  "Следующий шаг"),
+        ("«Назад» / «Предыдущий»",  "Предыдущий шаг"),
+        ("«Пауза» / «Останови»",    "Пауза таймера"),
+        ("«Старт» / «Запуск»",      "Запустить таймер"),
+        ("«Выйти» / «Закрыть»",     "Завершить приготовление"),
+    ]
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(commands, id: \.phrase) { item in
+                    HStack {
+                        Text(item.phrase)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(item.action)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            } header: {
+                Text("Доступные команды")
+            } footer: {
+                Text("Говорите чётко и отчётливо. Между командами выдерживайте паузу ~1.5 сек.")
+            }
+
+            Section("Советы") {
+                Label("Используйте русский язык — распознавание оптимизировано для него", systemImage: "waveform")
+                Label("Команды работают независимо от Hands-Free жестов", systemImage: "hand.raised.and.text.clock")
+                Label("Аудио не покидает устройство — только Apple Speech API", systemImage: "lock.shield")
+            }
+            .font(.subheadline)
+        }
+        .navigationTitle("Голосовые команды")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 }
 
 // MARK: - Licenses view
