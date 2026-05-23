@@ -58,7 +58,7 @@ struct RecipeListView: View {
                 scheduleSearch(newValue)
             }
             .sheet(isPresented: $showFilterSheet) {
-                FilterSheetView(query: $query, categories: viewModel.categories) {
+                FilterSheetView(query: $query, categories: viewModel.categories, tags: viewModel.tags) {
                     showFilterSheet = false
                     Task { await viewModel.loadRecipes(query: query, reset: true) }
                 }
@@ -68,7 +68,10 @@ struct RecipeListView: View {
             }
         }
         .task {
-            await viewModel.loadCategories()
+            async let cats: () = viewModel.loadCategories()
+            async let tgs: () = viewModel.loadTags()
+            await cats
+            await tgs
             await viewModel.loadRecipes(query: query, reset: true)
         }
     }
@@ -76,7 +79,7 @@ struct RecipeListView: View {
     // MARK: - Active filters
 
     private var hasActiveFilters: Bool {
-        query.category != nil || query.difficulty != nil || query.maxTime != nil
+        query.category != nil || query.difficulty != nil || query.maxTime != nil || !query.tags.isEmpty
     }
 
     @ViewBuilder
@@ -103,10 +106,18 @@ struct RecipeListView: View {
                             Task { await viewModel.loadRecipes(query: query, reset: true) }
                         }
                     }
+                    ForEach(query.tags, id: \.self) { tagId in
+                        let tagName = viewModel.tags.first(where: { $0.id == tagId })?.name ?? "Тег"
+                        FilterChip(label: "#\(tagName)") {
+                            query.tags.removeAll { $0 == tagId }
+                            Task { await viewModel.loadRecipes(query: query, reset: true) }
+                        }
+                    }
                     Button("Сбросить всё") {
                         query.category = nil
                         query.difficulty = nil
                         query.maxTime = nil
+                        query.tags = []
                         Task { await viewModel.loadRecipes(query: query, reset: true) }
                     }
                     .font(.caption)
@@ -325,11 +336,20 @@ struct SkeletonCardView: View {
 struct FilterSheetView: View {
     @Binding var query: RecipesQuery
     let categories: [RecipeCategory]
+    let tags: [Tag]
     let onApply: () -> Void
 
     @State private var selectedCategory: UUID?
     @State private var selectedDifficulty: Difficulty?
     @State private var maxTime: Int?
+    @State private var selectedTagIds: Set<UUID> = []
+    @State private var tagSearchText = ""
+
+    private var filteredTags: [Tag] {
+        tagSearchText.isEmpty ? tags : tags.filter {
+            $0.name.localizedCaseInsensitiveContains(tagSearchText)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -372,6 +392,47 @@ struct FilterSheetView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+
+                if !tags.isEmpty {
+                    Section {
+                        if tags.count > 6 {
+                            TextField("Поиск тегов", text: $tagSearchText)
+                                .textInputAutocapitalization(.never)
+                        }
+                        ForEach(filteredTags) { tag in
+                            Button {
+                                if selectedTagIds.contains(tag.id) {
+                                    selectedTagIds.remove(tag.id)
+                                } else {
+                                    selectedTagIds.insert(tag.id)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(tag.name)
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    if selectedTagIds.contains(tag.id) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.orange)
+                                            .fontWeight(.semibold)
+                                    }
+                                }
+                            }
+                        }
+                        if !selectedTagIds.isEmpty {
+                            Button("Сбросить теги") { selectedTagIds.removeAll() }
+                                .foregroundStyle(.orange)
+                        }
+                    } header: {
+                        HStack {
+                            Text("Теги")
+                            if !selectedTagIds.isEmpty {
+                                Text("· \(selectedTagIds.count) выбрано")
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle("Фильтры")
             .navigationBarTitleDisplayMode(.inline)
@@ -384,6 +445,7 @@ struct FilterSheetView: View {
                         query.category = selectedCategory
                         query.difficulty = selectedDifficulty
                         query.maxTime = maxTime
+                        query.tags = Array(selectedTagIds)
                         onApply()
                     }
                     .bold()
@@ -395,6 +457,7 @@ struct FilterSheetView: View {
             selectedCategory = query.category
             selectedDifficulty = query.difficulty
             maxTime = query.maxTime
+            selectedTagIds = Set(query.tags)
         }
     }
 }

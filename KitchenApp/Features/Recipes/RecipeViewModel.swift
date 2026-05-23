@@ -8,6 +8,7 @@ final class RecipeViewModel: ObservableObject {
     @Published var error: Error?
     @Published var hasMore = true
     @Published var categories: [RecipeCategory] = []
+    @Published var tags: [Tag] = []
 
     private let api = APIClient.shared
     private var currentPage = 1
@@ -48,6 +49,15 @@ final class RecipeViewModel: ObservableObject {
         do {
             let cats: [RecipeCategory] = try await api.request(.categories)
             categories = cats
+        } catch {
+            // Non-fatal
+        }
+    }
+
+    func loadTags(q: String? = nil) async {
+        do {
+            let loaded: [Tag] = try await api.request(.tags(q: q))
+            tags = loaded
         } catch {
             // Non-fatal
         }
