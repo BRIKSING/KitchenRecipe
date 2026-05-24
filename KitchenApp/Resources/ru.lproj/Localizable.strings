@@ -108,6 +108,33 @@
 "Имя пользователя"                  = "Имя пользователя";
 "Создать аккаунт"                   = "Создать аккаунт";
 
+/* Favorites & iCloud Sync */
+"favorites.tab"                = "Избранное";
+"favorites.title"              = "Избранное";
+"favorites.empty.title"        = "Нет избранных рецептов";
+"favorites.empty.subtitle"     = "Нажмите ♥ на странице рецепта,\nчтобы добавить его в избранное";
+"favorites.loading"            = "Загружается...";
+"favorites.remove"             = "Удалить";
+"favorites.add.action"         = "Добавить в избранное";
+"favorites.remove.action"      = "Убрать из избранного";
+
+"icloud.section.title"         = "iCloud";
+"icloud.section.footer"        = "Избранные рецепты и настройки автоматически синхронизируются между вашими устройствами через iCloud.";
+"icloud.sync.now"              = "Синхронизировать";
+"icloud.push.settings"         = "Синхронизировать настройки";
+"icloud.favorites.count"       = "Избранных рецептов";
+"icloud.unavailable"           = "iCloud недоступен";
+"icloud.unavailable.hint"      = "Войдите в iCloud для синхронизации между устройствами";
+"icloud.error"                 = "Ошибка синхронизации. Нажмите для повтора";
+"icloud.synced.at"             = "Синхронизировано: %@";
+
+"icloud.status.syncing"        = "Синхронизация...";
+"icloud.status.synced"         = "Синхронизировано в %@";
+"icloud.status.unavailable"    = "iCloud недоступен";
+"icloud.status.unavailable.hint" = "Войдите в iCloud в настройках устройства";
+"icloud.status.idle"           = "iCloud включён";
+"icloud.status.hint"           = "Избранное и настройки";
+
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 

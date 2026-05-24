@@ -4,6 +4,8 @@ import SwiftData
 @main
 struct KitchenRecipeApp: App {
     @StateObject private var authViewModel = AuthViewModel()
+    // Singleton sync-сервиса создаётся здесь и внедряется через @EnvironmentObject
+    private let syncService = iCloudSyncService.shared
 
     init() {
         SecurityAudit.run()
@@ -22,9 +24,14 @@ struct KitchenRecipeApp: App {
                 }
             }
             .environmentObject(authViewModel)
+            .environmentObject(syncService)
             .errorBanner()
+            .task {
+                // При старте приложения подтягиваем настройки из iCloud
+                syncService.pullSettings()
+            }
         }
-        .modelContainer(for: [DraftRecipe.self, CachedRecipeDetail.self])
+        .modelContainer(for: [DraftRecipe.self, CachedRecipeDetail.self, FavoriteRecipe.self])
     }
 
     #if DEBUG

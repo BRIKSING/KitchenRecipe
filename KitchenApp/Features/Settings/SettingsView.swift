@@ -4,6 +4,7 @@ import Speech
 
 struct SettingsView: View {
     @EnvironmentObject private var authVM: AuthViewModel
+    @EnvironmentObject private var syncService: iCloudSyncService
 
     // Server
     @State private var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000"
@@ -33,6 +34,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 serverSection
+                iCloudSyncSection
                 handsFreeSection
                 voiceCommandsSection
                 notificationsSection
@@ -101,6 +103,116 @@ struct SettingsView: View {
         let url = serverURL.lowercased()
         guard url.hasPrefix("http://") else { return false }
         return !url.hasPrefix("http://localhost") && !url.hasPrefix("http://127.")
+    }
+
+    // MARK: - iCloud Sync section
+
+    private var iCloudSyncSection: some View {
+        Section {
+            // Статус синхронизации
+            HStack {
+                iCloudStatusIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(iCloudStatusTitle)
+                        .font(.subheadline)
+                    Text(iCloudStatusSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if syncService.isAvailable {
+                    Button {
+                        syncService.syncNow()
+                        syncService.pushSettings()
+                    } label: {
+                        Text(NSLocalizedString("icloud.sync.now", value: "Синхронизировать", comment: ""))
+                            .font(.caption.bold())
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(.orange)
+                }
+            }
+            .padding(.vertical, 2)
+
+            // Количество избранных рецептов
+            if syncService.isAvailable {
+                LabeledContent(
+                    NSLocalizedString("icloud.favorites.count", value: "Избранных рецептов", comment: ""),
+                    value: "\(syncService.favoriteIDs.count)"
+                )
+
+                // Синхронизация настроек
+                Button {
+                    syncService.pushSettings()
+                } label: {
+                    Label(
+                        NSLocalizedString("icloud.push.settings", value: "Синхронизировать настройки", comment: ""),
+                        systemImage: "arrow.up.icloud"
+                    )
+                }
+                .foregroundStyle(.orange)
+            }
+        } header: {
+            Text(NSLocalizedString("icloud.section.title", value: "iCloud", comment: ""))
+        } footer: {
+            Text(NSLocalizedString("icloud.section.footer",
+                                   value: "Избранные рецепты и настройки автоматически синхронизируются между вашими устройствами через iCloud.",
+                                   comment: ""))
+        }
+    }
+
+    @ViewBuilder
+    private var iCloudStatusIcon: some View {
+        switch syncService.status {
+        case .syncing:
+            ProgressView().controlSize(.small)
+        case .synced:
+            Image(systemName: "checkmark.icloud.fill")
+                .foregroundStyle(.green)
+                .font(.system(size: 22))
+        case .unavailable:
+            Image(systemName: "icloud.slash")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 22))
+        case .error:
+            Image(systemName: "exclamationmark.icloud.fill")
+                .foregroundStyle(.red)
+                .font(.system(size: 22))
+        case .idle:
+            Image(systemName: "icloud")
+                .foregroundStyle(.orange)
+                .font(.system(size: 22))
+        }
+    }
+
+    private var iCloudStatusTitle: String {
+        switch syncService.status {
+        case .syncing:
+            return NSLocalizedString("icloud.status.syncing", value: "Синхронизация...", comment: "")
+        case .synced(let date):
+            let timeStr = date.formatted(date: .omitted, time: .shortened)
+            return String(format: NSLocalizedString("icloud.status.synced", value: "Синхронизировано в %@", comment: ""), timeStr)
+        case .unavailable:
+            return NSLocalizedString("icloud.status.unavailable", value: "iCloud недоступен", comment: "")
+        case .error(let msg):
+            return msg
+        case .idle:
+            return NSLocalizedString("icloud.status.idle", value: "iCloud включён", comment: "")
+        }
+    }
+
+    private var iCloudStatusSubtitle: String {
+        switch syncService.status {
+        case .unavailable:
+            return NSLocalizedString("icloud.status.unavailable.hint",
+                                     value: "Войдите в iCloud в настройках устройства",
+                                     comment: "")
+        default:
+            return NSLocalizedString("icloud.status.hint",
+                                     value: "Избранное и настройки",
+                                     comment: "")
+        }
     }
 
     // MARK: - Hands-Free section

@@ -4,6 +4,8 @@ import SwiftData
 struct RecipeDetailView: View {
     let recipeId: UUID
 
+    @EnvironmentObject private var syncService: iCloudSyncService
+
     @Environment(\.modelContext) private var modelContext
     @StateObject private var viewModel = RecipeViewModel()
     @State private var recipe: Recipe?
@@ -11,6 +13,7 @@ struct RecipeDetailView: View {
     @State private var servingsMultiplier: Double = 1.0
     @State private var startCooking = false
     @State private var isOfflineMode = false
+    @State private var isFavorite = false
 
     private let multipliers: [(label: String, value: Double)] = [
         ("×½", 0.5), ("×1", 1.0), ("×2", 2.0), ("×3", 3.0)
@@ -59,7 +62,21 @@ struct RecipeDetailView: View {
         }
         .navigationTitle(recipe.title)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // Кнопка «Избранное»
+                Button {
+                    toggleFavorite(recipe: recipe)
+                } label: {
+                    Image(systemName: isFavorite ? "heart.fill" : "heart")
+                        .symbolEffect(.bounce, value: isFavorite)
+                        .foregroundStyle(isFavorite ? .red : .primary)
+                }
+                .accessibilityLabel(
+                    isFavorite
+                        ? NSLocalizedString("favorites.remove.action", value: "Убрать из избранного", comment: "")
+                        : NSLocalizedString("favorites.add.action", value: "Добавить в избранное", comment: "")
+                )
+
                 ShareLink(
                     item: shareText(for: recipe),
                     subject: Text(recipe.title),
@@ -69,6 +86,12 @@ struct RecipeDetailView: View {
                 }
                 .tint(.orange)
             }
+        }
+        .onAppear {
+            isFavorite = syncService.isFavorite(id: recipeId)
+        }
+        .onChange(of: syncService.favoriteIDs) { _, _ in
+            isFavorite = syncService.isFavorite(id: recipeId)
         }
         .safeAreaInset(edge: .top) {
             if isOfflineMode {
@@ -352,6 +375,47 @@ struct RecipeDetailView: View {
         .accessibilityHint("Открывает пошаговый режим приготовления")
     }
 
+    // MARK: - Favorites
+
+    private func toggleFavorite(recipe: Recipe) {
+        let nowFavorite = syncService.toggleFavorite(id: recipe.id)
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
+            isFavorite = nowFavorite
+        }
+
+        if nowFavorite {
+            // Сохраняем/обновляем FavoriteRecipe в SwiftData
+            let idStr = recipe.id.uuidString
+            let descriptor = FetchDescriptor<FavoriteRecipe>(
+                predicate: #Predicate { $0.recipeId == idStr }
+            )
+            if let existing = try? modelContext.fetch(descriptor).first {
+                existing.update(from: recipe)
+            } else {
+                let fav = FavoriteRecipe(
+                    recipeId: recipe.id,
+                    title: recipe.title,
+                    coverImageURL: recipe.coverImageURL,
+                    difficulty: recipe.difficulty,
+                    cookTimeMin: recipe.cookTimeMin,
+                    categoryName: recipe.category?.name
+                )
+                modelContext.insert(fav)
+            }
+            try? modelContext.save()
+        } else {
+            // Удаляем локальную запись
+            let idStr = recipe.id.uuidString
+            let descriptor = FetchDescriptor<FavoriteRecipe>(
+                predicate: #Predicate { $0.recipeId == idStr }
+            )
+            if let existing = try? modelContext.fetch(descriptor).first {
+                modelContext.delete(existing)
+                try? modelContext.save()
+            }
+        }
+    }
+
     // MARK: - Offline cache
 
     private func loadRecipe() async {
@@ -360,6 +424,8 @@ struct RecipeDetailView: View {
             recipe = r
             isOfflineMode = false
             cacheRecipe(r)
+            // Если рецепт в избранном — обновляем локальную запись свежими данными
+            updateFavoriteRecordIfNeeded(r)
         } catch NetworkError.noConnection {
             if let cached = loadCachedRecipe() {
                 recipe = cached
@@ -368,6 +434,19 @@ struct RecipeDetailView: View {
             }
         } catch {
             ErrorBannerState.shared.show(error)
+        }
+    }
+
+    /// Обновляет FavoriteRecipe в SwiftData актуальными данными (включая placeholder-записи из iCloud).
+    private func updateFavoriteRecordIfNeeded(_ r: Recipe) {
+        guard syncService.isFavorite(id: r.id) else { return }
+        let idStr = r.id.uuidString
+        let descriptor = FetchDescriptor<FavoriteRecipe>(
+            predicate: #Predicate { $0.recipeId == idStr }
+        )
+        if let existing = try? modelContext.fetch(descriptor).first {
+            existing.update(from: r)
+            try? modelContext.save()
         }
     }
 

@@ -108,6 +108,33 @@
 "Имя пользователя"                  = "Username";
 "Создать аккаунт"                   = "Create Account";
 
+/* Favorites & iCloud Sync */
+"favorites.tab"                = "Favorites";
+"favorites.title"              = "Favorites";
+"favorites.empty.title"        = "No Favourite Recipes";
+"favorites.empty.subtitle"     = "Tap ♥ on a recipe page\nto add it to your favourites";
+"favorites.loading"            = "Loading...";
+"favorites.remove"             = "Remove";
+"favorites.add.action"         = "Add to Favourites";
+"favorites.remove.action"      = "Remove from Favourites";
+
+"icloud.section.title"         = "iCloud";
+"icloud.section.footer"        = "Favourite recipes and settings are automatically synced across your devices via iCloud.";
+"icloud.sync.now"              = "Sync Now";
+"icloud.push.settings"         = "Sync Settings";
+"icloud.favorites.count"       = "Favourite Recipes";
+"icloud.unavailable"           = "iCloud Unavailable";
+"icloud.unavailable.hint"      = "Sign in to iCloud to sync between devices";
+"icloud.error"                 = "Sync error. Tap to retry";
+"icloud.synced.at"             = "Synced at %@";
+
+"icloud.status.syncing"        = "Syncing...";
+"icloud.status.synced"         = "Synced at %@";
+"icloud.status.unavailable"    = "iCloud Unavailable";
+"icloud.status.unavailable.hint" = "Sign in to iCloud in device Settings";
+"icloud.status.idle"           = "iCloud Enabled";
+"icloud.status.hint"           = "Favourites and settings";
+
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 

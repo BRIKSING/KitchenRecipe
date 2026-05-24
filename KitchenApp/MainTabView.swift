@@ -22,6 +22,14 @@ struct MainTabView: View {
             CategoryView()
                 .tabItem { Label("Категории", systemImage: "square.grid.2x2") }
 
+            FavoritesView()
+                .tabItem {
+                    Label(
+                        NSLocalizedString("favorites.tab", value: "Избранное", comment: ""),
+                        systemImage: "heart.fill"
+                    )
+                }
+
             SettingsView()
                 .tabItem { Label("Профиль", systemImage: "person.circle") }
         }
@@ -43,6 +51,7 @@ struct MainTabView: View {
             switch sidebarSelection ?? .recipes {
             case .recipes:    RecipeListView()
             case .categories: CategoryView()
+            case .favorites:  FavoritesView()
             case .settings:   SettingsView()
             }
         }
@@ -53,12 +62,13 @@ struct MainTabView: View {
 // MARK: - Sidebar tab model
 
 private enum SidebarTab: CaseIterable, Hashable {
-    case recipes, categories, settings
+    case recipes, categories, favorites, settings
 
     var title: String {
         switch self {
         case .recipes:    return NSLocalizedString("Рецепты",   value: "Рецепты",   comment: "")
         case .categories: return NSLocalizedString("Категории", value: "Категории", comment: "")
+        case .favorites:  return NSLocalizedString("favorites.tab", value: "Избранное", comment: "")
         case .settings:   return NSLocalizedString("Профиль",   value: "Профиль",   comment: "")
         }
     }
@@ -67,6 +77,7 @@ private enum SidebarTab: CaseIterable, Hashable {
         switch self {
         case .recipes:    return "fork.knife"
         case .categories: return "square.grid.2x2"
+        case .favorites:  return "heart.fill"
         case .settings:   return "person.circle"
         }
     }
