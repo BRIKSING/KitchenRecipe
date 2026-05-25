@@ -4,6 +4,7 @@ import Speech
 
 struct SettingsView: View {
     @EnvironmentObject private var authVM: AuthViewModel
+    @Environment(CloudKitSyncService.self) private var syncService
 
     // Server
     @State private var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000"
@@ -33,6 +34,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 serverSection
+                iCloudSyncSection
                 handsFreeSection
                 voiceCommandsSection
                 notificationsSection
@@ -101,6 +103,112 @@ struct SettingsView: View {
         let url = serverURL.lowercased()
         guard url.hasPrefix("http://") else { return false }
         return !url.hasPrefix("http://localhost") && !url.hasPrefix("http://127.")
+    }
+
+    // MARK: - iCloud Sync section
+
+    private var iCloudSyncSection: some View {
+        Section {
+            // Enable / disable toggle
+            Toggle(isOn: Binding(
+                get: { syncService.isSyncEnabled },
+                set: { syncService.setEnabled($0) }
+            )) {
+                Label(
+                    NSLocalizedString("sync.toggle", value: "Синхронизация iCloud", comment: ""),
+                    systemImage: "icloud"
+                )
+            }
+            .tint(.orange)
+
+            // Status row (visible only when sync is enabled)
+            if syncService.isSyncEnabled {
+                HStack(spacing: 8) {
+                    if case .syncing = syncService.status {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: syncService.status.systemImageName)
+                            .foregroundStyle(syncStatusColor)
+                    }
+                    Text(syncService.status.localizedDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(syncStatusColor)
+
+                    Spacer()
+
+                    // Refresh button
+                    if syncService.status != .syncing {
+                        Button {
+                            Task { await syncService.checkAccountStatus() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(
+                            NSLocalizedString("sync.refresh_a11y", value: "Обновить статус синхронизации", comment: ""))
+                    }
+                }
+                .animation(.default, value: syncService.status)
+            }
+
+            // Last sync date
+            if syncService.isSyncEnabled, let date = syncService.lastSyncDate {
+                let fmt = NSLocalizedString("sync.last_sync", value: "Последняя синхронизация", comment: "")
+                LabeledContent(fmt, value: date.formatted(.relative(presentation: .named)))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Restart hint — shown when toggle changed after launch
+            if syncService.requiresRestartToBecomeActive {
+                Label {
+                    Text(NSLocalizedString(
+                        "sync.restart_hint",
+                        value: "Изменение вступит в силу после перезапуска приложения.",
+                        comment: ""))
+                        .font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                } icon: {
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                }
+                .foregroundStyle(.orange)
+            }
+
+            // iCloud sign-in prompt
+            if case .accountNotAvailable = syncService.status {
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Label(
+                        NSLocalizedString("sync.open_icloud", value: "Войти в iCloud в Настройках", comment: ""),
+                        systemImage: "arrow.up.right.square"
+                    )
+                }
+                .font(.subheadline)
+                .foregroundStyle(.orange)
+            }
+        } header: {
+            Text(NSLocalizedString("sync.section_header", value: "Синхронизация", comment: ""))
+        } footer: {
+            Text(NSLocalizedString(
+                "sync.section_footer",
+                value: "Черновики и кэш рецептов синхронизируются через iCloud между всеми вашими устройствами.",
+                comment: ""))
+        }
+    }
+
+    private var syncStatusColor: Color {
+        switch syncService.status {
+        case .synced:              return .green
+        case .syncing, .unknown:   return .blue
+        case .error, .accountNotAvailable: return .red
+        case .disabled:            return .secondary
+        }
     }
 
     // MARK: - Hands-Free section

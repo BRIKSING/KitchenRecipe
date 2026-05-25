@@ -108,6 +108,27 @@
 "Имя пользователя"                  = "Username";
 "Создать аккаунт"                   = "Create Account";
 
+/* iCloud Sync */
+"sync.section_header"   = "Sync";
+"sync.toggle"           = "iCloud Sync";
+"sync.section_footer"   = "Drafts and cached recipes are synced via iCloud across all your devices.";
+"sync.last_sync"        = "Last synced";
+"sync.open_icloud"      = "Sign in to iCloud in Settings";
+"sync.restart_hint"     = "This change will take effect after restarting the app.";
+"sync.refresh_a11y"     = "Refresh sync status";
+
+"sync.status.unknown"       = "Checking...";
+"sync.status.syncing"       = "Syncing...";
+"sync.status.synced"        = "Synced";
+"sync.status.error"         = "Error: %@";
+"sync.status.disabled"      = "Disabled";
+"sync.status.no_account"    = "Sign in to iCloud";
+
+"sync.error.restricted"     = "iCloud is restricted on this device";
+"sync.error.indeterminate"  = "Could not determine status";
+"sync.error.unavailable"    = "Temporarily unavailable";
+"sync.error.unknown"        = "Unknown error";
+
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 

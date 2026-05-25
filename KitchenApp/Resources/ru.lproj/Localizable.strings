@@ -108,6 +108,27 @@
 "Имя пользователя"                  = "Имя пользователя";
 "Создать аккаунт"                   = "Создать аккаунт";
 
+/* iCloud Sync */
+"sync.section_header"   = "Синхронизация";
+"sync.toggle"           = "Синхронизация iCloud";
+"sync.section_footer"   = "Черновики и кэш рецептов синхронизируются через iCloud между всеми вашими устройствами.";
+"sync.last_sync"        = "Последняя синхронизация";
+"sync.open_icloud"      = "Войти в iCloud в Настройках";
+"sync.restart_hint"     = "Изменение вступит в силу после перезапуска приложения.";
+"sync.refresh_a11y"     = "Обновить статус синхронизации";
+
+"sync.status.unknown"       = "Проверка...";
+"sync.status.syncing"       = "Синхронизация...";
+"sync.status.synced"        = "Синхронизировано";
+"sync.status.error"         = "Ошибка: %@";
+"sync.status.disabled"      = "Отключено";
+"sync.status.no_account"    = "Войдите в iCloud";
+
+"sync.error.restricted"     = "iCloud ограничен на устройстве";
+"sync.error.indeterminate"  = "Не удалось определить статус";
+"sync.error.unavailable"    = "Временно недоступен";
+"sync.error.unknown"        = "Неизвестная ошибка";
+
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
