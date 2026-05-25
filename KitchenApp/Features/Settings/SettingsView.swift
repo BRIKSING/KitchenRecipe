@@ -4,6 +4,7 @@ import Speech
 
 struct SettingsView: View {
     @EnvironmentObject private var authVM: AuthViewModel
+    @ObservedObject private var syncService = ICloudSyncService.shared
 
     // Server
     @State private var serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:3000"
@@ -37,6 +38,7 @@ struct SettingsView: View {
                 voiceCommandsSection
                 notificationsSection
                 languageSection
+                iCloudSyncSection
                 accountSection
                 aboutSection
             }
@@ -267,6 +269,76 @@ struct SettingsView: View {
             .onChange(of: appLanguage) { _, new in
                 UserDefaults.standard.set(new, forKey: "app.language")
             }
+        }
+    }
+
+    // MARK: - iCloud Sync section
+
+    private var iCloudSyncSection: some View {
+        Section {
+            // Availability indicator
+            HStack(spacing: 10) {
+                Image(systemName: syncService.status.systemImage)
+                    .font(.title3)
+                    .foregroundStyle(iCloudStatusColor)
+                    .symbolEffect(.pulse, isActive: syncService.status == .syncing)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(syncService.isICloudAvailable
+                         ? NSLocalizedString("icloud.signed_in", value: "iCloud подключён", comment: "iCloud available")
+                         : NSLocalizedString("icloud.signed_out", value: "iCloud не подключён", comment: "iCloud unavailable")
+                    )
+                    .font(.subheadline)
+
+                    Text(syncService.status.displayText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.vertical, 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(syncService.status.displayText)
+
+            // Preferences sync toggle
+            Toggle(
+                NSLocalizedString("icloud.toggle", value: "Синхронизировать настройки", comment: "Sync preferences via iCloud"),
+                isOn: $syncService.isEnabled
+            )
+            .tint(.orange)
+            .disabled(!syncService.isICloudAvailable)
+
+            // Manual sync button
+            if syncService.isEnabled && syncService.isICloudAvailable {
+                Button {
+                    Task { syncService.syncNow() }
+                } label: {
+                    Label(
+                        NSLocalizedString("icloud.sync_now", value: "Синхронизировать сейчас", comment: "Trigger immediate iCloud sync"),
+                        systemImage: "arrow.triangle.2.circlepath.icloud"
+                    )
+                }
+                .foregroundStyle(.orange)
+                .disabled(syncService.status == .syncing)
+            }
+
+        } header: {
+            Text(NSLocalizedString("icloud.section_header", value: "iCloud", comment: "iCloud section header"))
+        } footer: {
+            Text(NSLocalizedString(
+                "icloud.section_footer",
+                value: "Черновики рецептов синхронизируются автоматически через CloudKit. Настройки приложения (сервер, жесты, язык) синхронизируются через iCloud Key-Value Store.",
+                comment: "iCloud sync section footer"
+            ))
+        }
+    }
+
+    private var iCloudStatusColor: Color {
+        switch syncService.status {
+        case .synced:     return .green
+        case .syncing:    return .blue
+        case .error:      return .red
+        default:          return .secondary
         }
     }
 

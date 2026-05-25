@@ -111,6 +111,22 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* iCloud Sync */
+"icloud.section_header"   = "iCloud";
+"icloud.signed_in"        = "iCloud подключён";
+"icloud.signed_out"       = "iCloud не подключён";
+"icloud.toggle"           = "Синхронизировать настройки";
+"icloud.sync_now"         = "Синхронизировать сейчас";
+"icloud.section_footer"   = "Черновики рецептов синхронизируются автоматически через CloudKit. Настройки приложения (сервер, жесты, язык) синхронизируются через iCloud Key-Value Store.";
+
+"icloud.status.unavailable" = "iCloud недоступен — войдите в Apple ID в настройках iOS";
+"icloud.status.disabled"    = "Синхронизация отключена";
+"icloud.status.syncing"     = "Синхронизация…";
+"icloud.status.synced"      = "Синхронизировано %@";
+
+"icloud.error.failed"  = "Не удалось выполнить синхронизацию";
+"icloud.error.quota"   = "Превышена квота iCloud";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Предыдущий шаг";
 "accessibility.next_step"       = "Следующий шаг";

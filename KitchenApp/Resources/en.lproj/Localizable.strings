@@ -111,6 +111,22 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* iCloud Sync */
+"icloud.section_header"   = "iCloud";
+"icloud.signed_in"        = "iCloud Connected";
+"icloud.signed_out"       = "iCloud Not Connected";
+"icloud.toggle"           = "Sync Settings";
+"icloud.sync_now"         = "Sync Now";
+"icloud.section_footer"   = "Recipe drafts sync automatically via CloudKit. App settings (server, gestures, language) are synced via iCloud Key-Value Store.";
+
+"icloud.status.unavailable" = "iCloud unavailable — sign in with your Apple ID in iOS Settings";
+"icloud.status.disabled"    = "Sync disabled";
+"icloud.status.syncing"     = "Syncing…";
+"icloud.status.synced"      = "Synced %@";
+
+"icloud.error.failed"  = "Sync failed";
+"icloud.error.quota"   = "iCloud storage quota exceeded";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Previous step";
 "accessibility.next_step"       = "Next step";
