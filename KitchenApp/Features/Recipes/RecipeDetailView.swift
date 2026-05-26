@@ -5,7 +5,8 @@ struct RecipeDetailView: View {
     let recipeId: UUID
 
     @Environment(\.modelContext) private var modelContext
-    @StateObject private var viewModel = RecipeViewModel()
+    @StateObject private var viewModel          = RecipeViewModel()
+    @StateObject private var commentsRatingVM   = CommentsRatingViewModel()
     @State private var recipe: Recipe?
     @State private var isDescriptionExpanded = false
     @State private var servingsMultiplier: Double = 1.0
@@ -49,6 +50,10 @@ struct RecipeDetailView: View {
                     }
                     ingredientsSection(recipe)
                     stepsSection(recipe)
+                    Divider()
+                    RecipeRatingSectionView(recipeId: recipe.id, viewModel: commentsRatingVM)
+                    Divider()
+                    RecipeCommentsSectionView(recipeId: recipe.id, viewModel: commentsRatingVM)
                     Spacer().frame(height: 90)
                 }
             }

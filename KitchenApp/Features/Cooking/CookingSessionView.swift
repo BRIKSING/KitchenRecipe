@@ -61,7 +61,7 @@ struct CookingSessionView: View {
             )
 
             if showCompletion {
-                CompletionView { dismiss() }
+                CompletionView(recipeId: recipe.id) { dismiss() }
                     .transition(.opacity)
                     .zIndex(1)
             }
@@ -612,10 +612,13 @@ struct CookingSessionView: View {
 // MARK: - Completion screen
 
 private struct CompletionView: View {
+    let recipeId: UUID
     let onClose: () -> Void
 
     @State private var iconScale: CGFloat = 0.3
     @State private var contentOpacity: Double = 0
+    @State private var showRatingSheet = false
+    @StateObject private var ratingVM = CommentsRatingViewModel()
 
     var body: some View {
         ZStack {
@@ -652,7 +655,7 @@ private struct CompletionView: View {
 
                 VStack(spacing: 14) {
                     Button {
-                        // Оценка рецепта — будет реализована в следующих этапах
+                        showRatingSheet = true
                     } label: {
                         Label("Оценить рецепт", systemImage: "star.fill")
                             .font(.headline)
@@ -671,6 +674,27 @@ private struct CompletionView: View {
                 .padding(.bottom, 40)
                 .opacity(contentOpacity)
             }
+        }
+        .sheet(isPresented: $showRatingSheet) {
+            NavigationStack {
+                ScrollView {
+                    RecipeRatingSectionView(recipeId: recipeId, viewModel: ratingVM)
+                }
+                .navigationTitle(
+                    NSLocalizedString("comments.rate_this", value: "Оценить рецепт", comment: "")
+                )
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(NSLocalizedString("Готово", value: "Готово", comment: "")) {
+                            showRatingSheet = false
+                        }
+                        .foregroundStyle(.orange)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
         }
         .onAppear {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.65).delay(0.05)) {

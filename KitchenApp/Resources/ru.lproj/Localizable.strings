@@ -132,6 +132,20 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"comments.title"           = "Комментарии";
+"comments.ratings.title"   = "Оценки";
+"comments.empty"           = "Будьте первым, кто оставит комментарий!";
+"comments.placeholder"     = "Написать комментарий...";
+"comments.load_more"       = "Загрузить ещё";
+"comments.your_rating"     = "Ваша оценка";
+"comments.rate_this"       = "Оценить рецепт";
+"comments.submit_rating"   = "Сохранить оценку";
+"comments.ratings_one"     = "оценка";
+"comments.ratings_few"     = "оценки";
+"comments.ratings_many"    = "оценок";
+"comments.ratings_format"  = "%d %@";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Предыдущий шаг";
 "accessibility.next_step"       = "Следующий шаг";
@@ -144,3 +158,4 @@
 "accessibility.handsfree_off"   = "Hands-free выключен, дважды нажмите для включения";
 "accessibility.step_progress"   = "Шаг %d из %d";
 "accessibility.recipe_card"     = "%@, %@, %@";
+"accessibility.stars"           = "звёзд";

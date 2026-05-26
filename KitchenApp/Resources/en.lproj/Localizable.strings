@@ -132,6 +132,20 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"comments.title"           = "Comments";
+"comments.ratings.title"   = "Ratings";
+"comments.empty"           = "Be the first to leave a comment!";
+"comments.placeholder"     = "Write a comment...";
+"comments.load_more"       = "Load more";
+"comments.your_rating"     = "Your rating";
+"comments.rate_this"       = "Rate this recipe";
+"comments.submit_rating"   = "Save rating";
+"comments.ratings_one"     = "rating";
+"comments.ratings_few"     = "ratings";
+"comments.ratings_many"    = "ratings";
+"comments.ratings_format"  = "%d %@";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Previous step";
 "accessibility.next_step"       = "Next step";
@@ -144,3 +158,4 @@
 "accessibility.handsfree_off"   = "Hands-free off, double-tap to enable";
 "accessibility.step_progress"   = "Step %d of %d";
 "accessibility.recipe_card"     = "%@, %@, %@";
+"accessibility.stars"           = "stars";

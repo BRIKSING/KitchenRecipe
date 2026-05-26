@@ -167,6 +167,68 @@ struct PaginatedResponse<T: Decodable>: Decodable {
     }
 }
 
+// MARK: - Comment Author
+
+struct CommentAuthor: Codable {
+    let id: UUID
+    let username: String
+}
+
+// MARK: - Recipe Comment
+
+struct RecipeComment: Codable, Identifiable {
+    let id: UUID
+    let author: CommentAuthor
+    let text: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, author, text
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Recipe Rating
+
+struct RecipeRating: Codable {
+    let averageRating: Double
+    let totalRatings: Int
+    /// Current user's rating (1–5), nil if they haven't rated yet
+    let userRating: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case averageRating = "average_rating"
+        case totalRatings  = "total_ratings"
+        case userRating    = "user_rating"
+    }
+}
+
+// MARK: - Requests for comments & ratings
+
+struct CreateCommentRequest: Encodable {
+    let text: String
+}
+
+struct RateRecipeRequest: Encodable {
+    let rating: Int  // 1–5
+}
+
+// MARK: - Flexible action response (DELETE, etc.)
+
+/// Accepts any JSON object — used when the response body isn't meaningful.
+struct ActionResult: Decodable {
+    let success: Bool?
+    let id: UUID?
+
+    private enum CodingKeys: String, CodingKey { case success, id }
+
+    init(from decoder: Decoder) throws {
+        let c  = try decoder.container(keyedBy: CodingKeys.self)
+        success = try? c.decodeIfPresent(Bool.self, forKey: .success)
+        id      = try? c.decodeIfPresent(UUID.self, forKey: .id)
+    }
+}
+
 // MARK: - Auth responses
 
 struct AuthTokens: Decodable {
