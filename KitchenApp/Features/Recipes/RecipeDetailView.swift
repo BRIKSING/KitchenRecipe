@@ -11,6 +11,8 @@ struct RecipeDetailView: View {
     @State private var servingsMultiplier: Double = 1.0
     @State private var startCooking = false
     @State private var isOfflineMode = false
+    @State private var showComments = false
+    @State private var ratingViewModel = CommentsViewModel()
 
     private let multipliers: [(label: String, value: Double)] = [
         ("×½", 0.5), ("×1", 1.0), ("×2", 2.0), ("×3", 3.0)
@@ -27,6 +29,11 @@ struct RecipeDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadRecipe() }
+        .sheet(isPresented: $showComments) {
+            if let recipe {
+                CommentsView(recipeId: recipe.id)
+            }
+        }
         .fullScreenCover(isPresented: $startCooking) {
             if let recipe {
                 CookingSessionView(recipe: recipe)
@@ -47,6 +54,7 @@ struct RecipeDetailView: View {
                     if let desc = recipe.description, !desc.isEmpty {
                         descriptionSection(desc)
                     }
+                    ratingsSection(recipe)
                     ingredientsSection(recipe)
                     stepsSection(recipe)
                     Spacer().frame(height: 90)
@@ -228,6 +236,58 @@ struct RecipeDetailView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Ratings & Comments
+
+    private func ratingsSection(_ recipe: Recipe) -> some View {
+        Button {
+            showComments = true
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(NSLocalizedString("comments.ratings_header", value: "Оценки и отзывы", comment: ""))
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    if let r = ratingViewModel.rating, r.count > 0 {
+                        HStack(spacing: 6) {
+                            StarRatingView(rating: r.average, userRating: nil, starSize: 16)
+                            Text(String(format: "%.1f", r.average))
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.orange)
+                            Text("·")
+                                .foregroundStyle(.secondary)
+                            Text(
+                                String(
+                                    format: NSLocalizedString("comments.ratings_count", value: "%d оценок", comment: ""),
+                                    r.count
+                                )
+                            )
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        }
+                    } else if ratingViewModel.isLoadingRating {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    } else {
+                        Text(NSLocalizedString("comments.no_ratings_yet", value: "Нет оценок", comment: ""))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .background(Color(.secondarySystemBackground))
+        }
+        .buttonStyle(.plain)
+        .task { await ratingViewModel.loadRating(recipeId: recipe.id) }
     }
 
     // MARK: - Ingredients with portion scaling

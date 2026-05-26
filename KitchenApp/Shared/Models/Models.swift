@@ -149,6 +149,55 @@ struct Recipe: Codable, Identifiable {
     }
 }
 
+// MARK: - Comment Author
+
+struct CommentAuthor: Codable {
+    let id: UUID
+    let username: String
+}
+
+// MARK: - Comment
+
+struct Comment: Codable, Identifiable {
+    let id: UUID
+    let author: CommentAuthor
+    let text: String
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case author
+        case text
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Recipe Rating
+
+struct RecipeRating: Codable {
+    let recipeId: UUID
+    let average: Double
+    let count: Int
+    let userRating: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case recipeId   = "recipe_id"
+        case average
+        case count
+        case userRating = "user_rating"
+    }
+}
+
+// MARK: - Request bodies for comments & ratings
+
+struct CreateCommentRequest: Encodable {
+    let text: String
+}
+
+struct RateRecipeRequest: Encodable {
+    let rating: Int
+}
+
 // MARK: - Paginated response
 
 struct PaginatedResponse<T: Decodable>: Decodable {

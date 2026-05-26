@@ -132,6 +132,23 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"comments.title"            = "Reviews";
+"comments.ratings_header"   = "Ratings & Reviews";
+"comments.ratings_count"    = "%d ratings";
+"comments.no_ratings_yet"   = "No ratings yet";
+"comments.your_rating"      = "Your rating";
+"comments.submit_rating"    = "Submit";
+"comments.rating_saved"     = "Saved!";
+"comments.section_header"   = "Comments (%d)";
+"comments.empty"            = "No comments yet.\nBe the first!";
+"comments.placeholder"      = "Write a comment…";
+"comments.send_button"      = "Send";
+"comments.load_more"        = "Load more";
+"comments.delete_confirm"   = "Delete comment?";
+"accessibility.rating"      = "Rating: %.1f out of %d";
+"accessibility.your_rating" = "Your rating: %d";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Previous step";
 "accessibility.next_step"       = "Next step";

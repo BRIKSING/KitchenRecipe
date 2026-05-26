@@ -132,6 +132,23 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"comments.title"            = "Отзывы";
+"comments.ratings_header"   = "Оценки и отзывы";
+"comments.ratings_count"    = "%d оценок";
+"comments.no_ratings_yet"   = "Нет оценок";
+"comments.your_rating"      = "Ваша оценка";
+"comments.submit_rating"    = "Отправить";
+"comments.rating_saved"     = "Сохранено!";
+"comments.section_header"   = "Комментарии (%d)";
+"comments.empty"            = "Пока нет комментариев.\nБудьте первым!";
+"comments.placeholder"      = "Написать комментарий…";
+"comments.send_button"      = "Отправить";
+"comments.load_more"        = "Загрузить ещё";
+"comments.delete_confirm"   = "Удалить комментарий?";
+"accessibility.rating"      = "Рейтинг: %.1f из %d";
+"accessibility.your_rating" = "Ваша оценка: %d";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Предыдущий шаг";
 "accessibility.next_step"       = "Следующий шаг";

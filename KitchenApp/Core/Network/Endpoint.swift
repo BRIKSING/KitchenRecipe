@@ -95,6 +95,15 @@ enum Endpoint {
     // Upload
     case uploadImage
 
+    // Comments
+    case comments(recipeId: UUID, page: Int, perPage: Int)
+    case postComment(recipeId: UUID)
+    case deleteComment(recipeId: UUID, commentId: UUID)
+
+    // Ratings
+    case recipeRating(recipeId: UUID)
+    case rateRecipe(recipeId: UUID)
+
     var path: String {
         switch self {
         case .register:                         return "/auth/register"
@@ -122,21 +131,30 @@ enum Endpoint {
         case .categories, .createCategory:      return "/categories"
         case .tags:                             return "/tags"
         case .uploadImage:                      return "/upload/image"
+
+        case .comments(let rid, _, _):          return "/recipes/\(rid)/comments"
+        case .postComment(let rid):             return "/recipes/\(rid)/comments"
+        case .deleteComment(let rid, let cid):  return "/recipes/\(rid)/comments/\(cid)"
+        case .recipeRating(let rid):            return "/recipes/\(rid)/rating"
+        case .rateRecipe(let rid):              return "/recipes/\(rid)/rating"
         }
     }
 
     var method: String {
         switch self {
-        case .recipes, .recipe, .steps, .categories, .tags:
+        case .recipes, .recipe, .steps, .categories, .tags,
+             .comments, .recipeRating:
             return "GET"
         case .register, .login, .refreshToken, .logout,
              .createRecipe, .createStep, .publishRecipe,
              .uploadStepPhoto, .reorderSteps, .reorderStepPhotos,
-             .createCategory, .uploadImage:
+             .createCategory, .uploadImage,
+             .postComment, .rateRecipe:
             return "POST"
         case .updateRecipe, .updateStep:
             return "PUT"
-        case .deleteRecipe, .deleteStep, .deleteStepPhoto:
+        case .deleteRecipe, .deleteStep, .deleteStepPhoto,
+             .deleteComment:
             return "DELETE"
         }
     }
@@ -145,6 +163,11 @@ enum Endpoint {
         switch self {
         case .recipes(let query): return query.queryItems
         case .tags(let q):        return q.map { [.init(name: "q", value: $0)] }
+        case .comments(_, let page, let perPage):
+            return [
+                URLQueryItem(name: "page",     value: String(page)),
+                URLQueryItem(name: "per_page", value: String(perPage))
+            ]
         default:                  return nil
         }
     }
