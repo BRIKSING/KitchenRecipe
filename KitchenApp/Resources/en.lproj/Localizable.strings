@@ -132,6 +132,26 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"Отзывы"                            = "Reviews";
+"Оставить отзыв"                    = "Leave a Review";
+"Оставить отзыв о рецепте"          = "Leave a review for this recipe";
+"Пока нет отзывов. Будьте первым!"  = "No reviews yet. Be the first!";
+"из 5"                              = "out of 5";
+"Новый отзыв"                       = "New Review";
+"Ваша оценка (необязательно)"       = "Your Rating (optional)";
+"Комментарий"                       = "Comment";
+"Поделитесь впечатлениями о рецепте…" = "Share your impressions of the recipe…";
+"Опубликовать"                      = "Publish";
+"Удалить комментарий?"              = "Delete Comment?";
+"Сегодня"                           = "Today";
+"Вчера"                             = "Yesterday";
+"Плохо"                             = "Poor";
+"Так себе"                          = "Fair";
+"Нормально"                         = "Okay";
+"Хорошо"                            = "Good";
+"Отлично!"                          = "Excellent!";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Previous step";
 "accessibility.next_step"       = "Next step";

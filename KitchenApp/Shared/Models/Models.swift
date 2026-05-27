@@ -183,3 +183,39 @@ struct UploadResponse: Decodable {
     let url: URL
     let key: String
 }
+
+// MARK: - Comment Author
+
+struct CommentAuthor: Codable {
+    let id: UUID
+    let username: String
+}
+
+// MARK: - Recipe Comment
+
+struct RecipeComment: Codable, Identifiable {
+    let id: UUID
+    let author: CommentAuthor
+    let text: String
+    let rating: Int?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, author, text, rating
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Rating Summary
+
+struct RecipeRatingSummary: Codable {
+    let average: Double
+    let count: Int
+}
+
+// MARK: - Add Comment Request
+
+struct AddCommentRequest: Encodable {
+    let text: String
+    let rating: Int?
+}

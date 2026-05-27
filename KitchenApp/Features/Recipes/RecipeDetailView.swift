@@ -49,6 +49,7 @@ struct RecipeDetailView: View {
                     }
                     ingredientsSection(recipe)
                     stepsSection(recipe)
+                    commentsSection(recipe)
                     Spacer().frame(height: 90)
                 }
             }
@@ -330,6 +331,16 @@ struct RecipeDetailView: View {
             }
         }
         .padding()
+    }
+
+    // MARK: - Comments & Ratings
+
+    private func commentsSection(_ recipe: Recipe) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+                .padding(.horizontal)
+            CommentsRatingView(recipeId: recipe.id)
+        }
     }
 
     // MARK: - Sticky "Start cooking" button
