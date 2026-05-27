@@ -183,3 +183,61 @@ struct UploadResponse: Decodable {
     let url: URL
     let key: String
 }
+
+// MARK: - Comments query
+
+struct CommentsQuery {
+    var page: Int = 1
+    var perPage: Int = 20
+
+    var queryItems: [URLQueryItem] {
+        [
+            URLQueryItem(name: "page",     value: String(page)),
+            URLQueryItem(name: "per_page", value: String(perPage))
+        ]
+    }
+}
+
+// MARK: - Comment author
+
+struct CommentAuthor: Codable {
+    let id: UUID
+    let username: String
+}
+
+// MARK: - Comment
+
+struct Comment: Codable, Identifiable {
+    let id: UUID
+    let author: CommentAuthor
+    let text: String
+    let rating: Int?
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, author, text, rating
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Rating stats
+
+struct RatingStats: Decodable {
+    let average: Double
+    let count: Int
+}
+
+// MARK: - Comment & Rating requests
+
+struct CreateCommentRequest: Encodable {
+    let text: String
+    let rating: Int?
+}
+
+struct CreateRatingRequest: Encodable {
+    let rating: Int
+}
+
+// MARK: - Utility
+
+struct EmptyResponse: Decodable {}

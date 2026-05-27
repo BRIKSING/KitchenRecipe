@@ -132,6 +132,35 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"comments.title"                = "Отзывы";
+"comments.ratings_header"       = "Оценки";
+"comments.rate_btn"             = "Оценить";
+"comments.rate_title"           = "Оцените рецепт";
+"comments.out_of_5"             = "из 5";
+"comments.ratings_count"        = "%d оценок";
+"comments.no_ratings_yet"       = "Оценок пока нет. Попробуйте первым!";
+"comments.empty_title"          = "Пока нет отзывов";
+"comments.empty_subtitle"       = "Станьте первым, кто оставит отзыв!";
+"comments.write_first"          = "Написать отзыв";
+"comments.show_all"             = "Все";
+"comments.add_btn_a11y"         = "Добавить отзыв";
+"comments.add_comment_toggle"   = "Добавить текстовый отзыв";
+"comments.your_review"          = "Ваш отзыв";
+"comments.placeholder"          = "Расскажите о своём опыте…";
+"comments.submit"               = "Отправить";
+"comments.thanks"               = "Спасибо за оценку!";
+"comments.rating1"              = "Плохо";
+"comments.rating2"              = "Терпимо";
+"comments.rating3"              = "Нормально";
+"comments.rating4"              = "Хорошо";
+"comments.rating5"              = "Отлично!";
+"comments.add_title"            = "Новый отзыв";
+"comments.your_rating"          = "Ваша оценка (необязательно)";
+"comments.comment_header"       = "Комментарий";
+"comments.comment_footer"       = "Расскажите, что получилось и что можно улучшить.";
+"comments.delete_confirm_title" = "Удалить отзыв?";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Предыдущий шаг";
 "accessibility.next_step"       = "Следующий шаг";

@@ -132,6 +132,35 @@
 /* Sidebar (iPad) */
 "sidebar.title" = "Kitchen";
 
+/* Comments & Ratings */
+"comments.title"                = "Reviews";
+"comments.ratings_header"       = "Ratings";
+"comments.rate_btn"             = "Rate";
+"comments.rate_title"           = "Rate this Recipe";
+"comments.out_of_5"             = "out of 5";
+"comments.ratings_count"        = "%d ratings";
+"comments.no_ratings_yet"       = "No ratings yet. Be the first!";
+"comments.empty_title"          = "No reviews yet";
+"comments.empty_subtitle"       = "Be the first to leave a review!";
+"comments.write_first"          = "Write a Review";
+"comments.show_all"             = "All";
+"comments.add_btn_a11y"         = "Add a review";
+"comments.add_comment_toggle"   = "Add a written review";
+"comments.your_review"          = "Your review";
+"comments.placeholder"          = "Tell us about your experience…";
+"comments.submit"               = "Submit";
+"comments.thanks"               = "Thanks for your rating!";
+"comments.rating1"              = "Poor";
+"comments.rating2"              = "Fair";
+"comments.rating3"              = "Average";
+"comments.rating4"              = "Good";
+"comments.rating5"              = "Excellent!";
+"comments.add_title"            = "New Review";
+"comments.your_rating"          = "Your Rating (optional)";
+"comments.comment_header"       = "Comment";
+"comments.comment_footer"       = "Share what worked and what could be improved.";
+"comments.delete_confirm_title" = "Delete Review?";
+
 /* Accessibility */
 "accessibility.prev_step"       = "Previous step";
 "accessibility.next_step"       = "Next step";

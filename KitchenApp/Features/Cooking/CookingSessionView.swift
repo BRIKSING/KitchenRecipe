@@ -61,7 +61,7 @@ struct CookingSessionView: View {
             )
 
             if showCompletion {
-                CompletionView { dismiss() }
+                CompletionView(recipeId: recipe.id, recipeTitle: recipe.title) { dismiss() }
                     .transition(.opacity)
                     .zIndex(1)
             }
@@ -612,10 +612,13 @@ struct CookingSessionView: View {
 // MARK: - Completion screen
 
 private struct CompletionView: View {
+    let recipeId: UUID
+    let recipeTitle: String
     let onClose: () -> Void
 
     @State private var iconScale: CGFloat = 0.3
     @State private var contentOpacity: Double = 0
+    @State private var showRateSheet = false
 
     var body: some View {
         ZStack {
@@ -652,7 +655,7 @@ private struct CompletionView: View {
 
                 VStack(spacing: 14) {
                     Button {
-                        // Оценка рецепта — будет реализована в следующих этапах
+                        showRateSheet = true
                     } label: {
                         Label("Оценить рецепт", systemImage: "star.fill")
                             .font(.headline)
@@ -671,6 +674,9 @@ private struct CompletionView: View {
                 .padding(.bottom, 40)
                 .opacity(contentOpacity)
             }
+        }
+        .sheet(isPresented: $showRateSheet) {
+            RateRecipeSheet(recipeId: recipeId, recipeTitle: recipeTitle)
         }
         .onAppear {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.65).delay(0.05)) {

@@ -11,6 +11,9 @@ struct RecipeDetailView: View {
     @State private var servingsMultiplier: Double = 1.0
     @State private var startCooking = false
     @State private var isOfflineMode = false
+    @State private var showRateSheet = false
+
+    @StateObject private var commentsVM = CommentsViewModel()
 
     private let multipliers: [(label: String, value: Double)] = [
         ("×½", 0.5), ("×1", 1.0), ("×2", 2.0), ("×3", 3.0)
@@ -27,6 +30,13 @@ struct RecipeDetailView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadRecipe() }
+        .sheet(isPresented: $showRateSheet) {
+            if let recipe {
+                RateRecipeSheet(recipeId: recipe.id, recipeTitle: recipe.title) {
+                    Task { await commentsVM.loadInitial(recipeId: recipe.id) }
+                }
+            }
+        }
         .fullScreenCover(isPresented: $startCooking) {
             if let recipe {
                 CookingSessionView(recipe: recipe)
@@ -49,6 +59,8 @@ struct RecipeDetailView: View {
                     }
                     ingredientsSection(recipe)
                     stepsSection(recipe)
+                    ratingSummarySection(recipe)
+                    commentsPreviewSection(recipe)
                     Spacer().frame(height: 90)
                 }
             }
@@ -330,6 +342,135 @@ struct RecipeDetailView: View {
             }
         }
         .padding()
+    }
+
+    // MARK: - Rating summary
+
+    private func ratingSummarySection(_ recipe: Recipe) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(NSLocalizedString("comments.ratings_header", value: "Оценки", comment: ""))
+                    .font(.headline)
+                Spacer()
+                Button {
+                    showRateSheet = true
+                } label: {
+                    Label(
+                        NSLocalizedString("comments.rate_btn", value: "Оценить", comment: ""),
+                        systemImage: "star"
+                    )
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.orange)
+                }
+            }
+
+            Divider()
+
+            if let stats = commentsVM.ratingStats, stats.count > 0 {
+                HStack(spacing: 14) {
+                    VStack(spacing: 2) {
+                        Text(String(format: "%.1f", stats.average))
+                            .font(.system(size: 40, weight: .bold))
+                            .foregroundStyle(.orange)
+                        Text(NSLocalizedString("comments.out_of_5", value: "из 5", comment: ""))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        StarRatingView(rating: stats.average, starSize: 20)
+                        Text(String(format: NSLocalizedString("comments.ratings_count", value: "%d оценок", comment: ""), stats.count))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            } else {
+                Text(NSLocalizedString("comments.no_ratings_yet", value: "Оценок пока нет. Попробуйте первым!", comment: ""))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .task { await commentsVM.loadRatingStats(recipeId: recipe.id) }
+    }
+
+    // MARK: - Comments preview
+
+    private func commentsPreviewSection(_ recipe: Recipe) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(NSLocalizedString("comments.title", value: "Отзывы", comment: ""))
+                    .font(.headline)
+                if !commentsVM.comments.isEmpty {
+                    Text("(\(commentsVM.comments.count))")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                NavigationLink {
+                    RecipeCommentsView(recipeId: recipe.id, recipeTitle: recipe.title)
+                } label: {
+                    Text(NSLocalizedString("comments.show_all", value: "Все", comment: ""))
+                        .font(.subheadline.bold())
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Divider()
+
+            if commentsVM.comments.isEmpty {
+                Text(NSLocalizedString("comments.empty_title", value: "Пока нет отзывов", comment: ""))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                // Показываем не более 2-х последних комментариев
+                ForEach(commentsVM.comments.prefix(2)) { comment in
+                    commentPreviewRow(comment)
+                }
+            }
+        }
+        .padding()
+        .task { await commentsVM.loadInitial(recipeId: recipe.id) }
+    }
+
+    private func commentPreviewRow(_ comment: Comment) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                // Avatar
+                Circle()
+                    .fill(avatarColor(for: comment.author.username))
+                    .frame(width: 32, height: 32)
+                    .overlay {
+                        Text(String(comment.author.username.prefix(1)).uppercased())
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(comment.author.username)
+                        .font(.subheadline.bold())
+                    Text(comment.createdAt.formatted(date: .abbreviated, time: .omitted))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if let rating = comment.rating {
+                    StarRatingView(rating: Double(rating), starSize: 13)
+                }
+            }
+            Text(comment.text)
+                .font(.subheadline)
+                .lineLimit(3)
+                .foregroundStyle(.primary)
+            Divider()
+        }
+    }
+
+    private func avatarColor(for username: String) -> Color {
+        let colors: [Color] = [.orange, .blue, .green, .purple, .pink, .teal]
+        let index = abs(username.hashValue) % colors.count
+        return colors[index]
     }
 
     // MARK: - Sticky "Start cooking" button
