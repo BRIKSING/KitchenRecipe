@@ -61,7 +61,14 @@ final class APIClient {
         var request = URLRequest(url: components.url!)
         request.httpMethod = endpoint.method
 
-        if let token = KeychainService.accessToken {
+        // logout инвалидирует refresh-токен, и бэкенд ждёт его в Authorization-заголовке.
+        // Все остальные защищённые роуты используют access-токен.
+        let authToken: String?
+        switch endpoint {
+        case .logout: authToken = KeychainService.refreshToken
+        default:      authToken = KeychainService.accessToken
+        }
+        if let token = authToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -110,6 +117,10 @@ final class APIClient {
 
         switch http.statusCode {
         case 200...299:
+            // 204 No Content / пустое тело (logout, delete) — отдаём EmptyResponse без декодирования.
+            if data.isEmpty, let empty = EmptyResponse() as? T {
+                return empty
+            }
             do {
                 return try decoder.decode(T.self, from: data)
             } catch {
@@ -118,7 +129,13 @@ final class APIClient {
         case 401:
             throw NetworkError.unauthorized
         default:
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            // Бэкенд отдаёт ошибки в формате { detail, code }.
+            let message: String
+            if let payload = try? decoder.decode(ServerErrorPayload.self, from: data) {
+                message = payload.detail
+            } else {
+                message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            }
             throw NetworkError.serverError(http.statusCode, message)
         }
     }
@@ -130,14 +147,13 @@ final class APIClient {
             throw NetworkError.unauthorized
         }
 
-        struct RefreshBody: Encodable { let refresh_token: String }
         struct RefreshResponse: Decodable { let access_token: String }
 
         let components = URLComponents(url: baseURL.appendingPathComponent("/auth/refresh"), resolvingAgainstBaseURL: false)!
         var req = URLRequest(url: components.url!)
         req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(RefreshBody(refresh_token: refreshToken))
+        // Бэкенд читает refresh-токен из Authorization: Bearer, а не из тела запроса.
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
 
         let (data, _) = try await session.data(for: req)
         let result = try decoder.decode(RefreshResponse.self, from: data)
@@ -157,4 +173,12 @@ final class APIClient {
         body.append("\(crlf)--\(boundary)--\(crlf)".data(using: .utf8)!)
         return body
     }
+}
+
+// MARK: - Server error payload
+
+/// Формат ошибок бэкенда: { "detail": "...", "code": "ERROR_CODE" }
+private struct ServerErrorPayload: Decodable {
+    let detail: String
+    let code: String?
 }

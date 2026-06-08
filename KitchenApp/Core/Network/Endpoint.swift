@@ -20,7 +20,9 @@ struct RecipesQuery {
         if let category   = category   { items.append(.init(name: "category",   value: category.uuidString)) }
         if let difficulty = difficulty { items.append(.init(name: "difficulty",  value: difficulty.rawValue)) }
         if let maxTime    = maxTime    { items.append(.init(name: "max_time",    value: String(maxTime))) }
-        tags.forEach { items.append(.init(name: "tags[]", value: $0.uuidString)) }
+        // Бэкенд (Fastify, дефолтный парсер) ожидает повторяющийся ключ `tags`,
+        // а не скобочную нотацию `tags[]`.
+        tags.forEach { items.append(.init(name: "tags", value: $0.uuidString)) }
         return items
     }
 }
