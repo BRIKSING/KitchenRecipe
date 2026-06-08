@@ -156,14 +156,26 @@ struct PaginatedResponse<T: Decodable>: Decodable {
     let total: Int
     let page: Int
     let perPage: Int
+    let pages: Int
     let hasMore: Bool
 
     enum CodingKeys: String, CodingKey {
-        case data
+        case data    = "items"
         case total
         case page
-        case perPage  = "per_page"
-        case hasMore  = "has_more"
+        case perPage = "per_page"
+        case pages
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        data    = try container.decode([T].self, forKey: .data)
+        total   = try container.decode(Int.self, forKey: .total)
+        page    = try container.decode(Int.self, forKey: .page)
+        perPage = try container.decode(Int.self, forKey: .perPage)
+        pages   = try container.decode(Int.self, forKey: .pages)
+        // Backend does not send a `has_more` flag — derive it from the page count.
+        hasMore = page < pages
     }
 }
 

@@ -61,7 +61,13 @@ final class APIClient {
         var request = URLRequest(url: components.url!)
         request.httpMethod = endpoint.method
 
-        if let token = KeychainService.accessToken {
+        // /auth/logout expects the refresh token in the Authorization header,
+        // all other authenticated endpoints use the access token.
+        if case .logout = endpoint {
+            if let refresh = KeychainService.refreshToken {
+                request.setValue("Bearer \(refresh)", forHTTPHeaderField: "Authorization")
+            }
+        } else if let token = KeychainService.accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -130,14 +136,13 @@ final class APIClient {
             throw NetworkError.unauthorized
         }
 
-        struct RefreshBody: Encodable { let refresh_token: String }
         struct RefreshResponse: Decodable { let access_token: String }
 
+        // Backend reads the refresh token from the Authorization header.
         let components = URLComponents(url: baseURL.appendingPathComponent("/auth/refresh"), resolvingAgainstBaseURL: false)!
         var req = URLRequest(url: components.url!)
         req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(RefreshBody(refresh_token: refreshToken))
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
 
         let (data, _) = try await session.data(for: req)
         let result = try decoder.decode(RefreshResponse.self, from: data)

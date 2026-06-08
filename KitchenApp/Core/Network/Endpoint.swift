@@ -20,7 +20,7 @@ struct RecipesQuery {
         if let category   = category   { items.append(.init(name: "category",   value: category.uuidString)) }
         if let difficulty = difficulty { items.append(.init(name: "difficulty",  value: difficulty.rawValue)) }
         if let maxTime    = maxTime    { items.append(.init(name: "max_time",    value: String(maxTime))) }
-        tags.forEach { items.append(.init(name: "tags[]", value: $0.uuidString)) }
+        tags.forEach { items.append(.init(name: "tags", value: $0.uuidString)) }
         return items
     }
 }
@@ -145,10 +145,12 @@ enum Endpoint {
             return "GET"
         case .register, .login, .refreshToken, .logout,
              .createRecipe, .createStep, .publishRecipe,
-             .uploadStepPhoto, .reorderSteps, .reorderStepPhotos,
+             .uploadStepPhoto,
              .createCategory, .uploadImage,
              .createComment, .rateRecipe:
             return "POST"
+        case .reorderSteps, .reorderStepPhotos:
+            return "PATCH"
         case .updateRecipe, .updateStep:
             return "PUT"
         case .deleteRecipe, .deleteStep, .deleteStepPhoto,
