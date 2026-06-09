@@ -71,6 +71,3 @@ final class AuthViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "user.username")
     }
 }
-
-// Helper for endpoints that return no body
-struct EmptyResponse: Decodable {}

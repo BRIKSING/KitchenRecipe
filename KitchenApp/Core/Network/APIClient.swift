@@ -61,7 +61,13 @@ final class APIClient {
         var request = URLRequest(url: components.url!)
         request.httpMethod = endpoint.method
 
-        if let token = KeychainService.accessToken {
+        // Бэкенд для /auth/logout инвалидирует refresh-токен, который
+        // ожидается в заголовке Authorization (Bearer), а не access-токен.
+        if case .logout = endpoint {
+            if let refresh = KeychainService.refreshToken {
+                request.setValue("Bearer \(refresh)", forHTTPHeaderField: "Authorization")
+            }
+        } else if let token = KeychainService.accessToken {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
@@ -118,9 +124,21 @@ final class APIClient {
         case 401:
             throw NetworkError.unauthorized
         default:
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+            let message = Self.parseErrorMessage(from: data)
             throw NetworkError.serverError(http.statusCode, message)
         }
+    }
+
+    /// Бэкенд возвращает ошибки в формате { "detail": "...", "code": "..." }.
+    /// Достаём человекочитаемое сообщение из `detail`, иначе — сырой текст.
+    private static func parseErrorMessage(from data: Data) -> String {
+        struct APIError: Decodable { let detail: String? }
+        if let parsed = try? JSONDecoder().decode(APIError.self, from: data),
+           let detail = parsed.detail, !detail.isEmpty {
+            return detail
+        }
+        let raw = String(data: data, encoding: .utf8) ?? ""
+        return raw.isEmpty ? "Unknown error" : raw
     }
 
     // MARK: - Token refresh
@@ -130,16 +148,19 @@ final class APIClient {
             throw NetworkError.unauthorized
         }
 
-        struct RefreshBody: Encodable { let refresh_token: String }
         struct RefreshResponse: Decodable { let access_token: String }
 
+        // Бэкенд ожидает refresh-токен в заголовке Authorization (Bearer),
+        // а не в теле запроса, и возвращает { "access_token": "..." }.
         let components = URLComponents(url: baseURL.appendingPathComponent("/auth/refresh"), resolvingAgainstBaseURL: false)!
         var req = URLRequest(url: components.url!)
         req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(RefreshBody(refresh_token: refreshToken))
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, _) = try await session.data(for: req)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NetworkError.unauthorized
+        }
         let result = try decoder.decode(RefreshResponse.self, from: data)
         KeychainService.accessToken = result.access_token
         return result.access_token
