@@ -159,11 +159,21 @@ struct PaginatedResponse<T: Decodable>: Decodable {
     let hasMore: Bool
 
     enum CodingKeys: String, CodingKey {
-        case data
+        case items
         case total
         case page
-        case perPage  = "per_page"
-        case hasMore  = "has_more"
+        case perPage = "per_page"
+        case pages
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        data    = try container.decode([T].self, forKey: .items)
+        total   = try container.decode(Int.self, forKey: .total)
+        page    = try container.decode(Int.self, forKey: .page)
+        perPage = try container.decode(Int.self, forKey: .perPage)
+        let pages = try container.decodeIfPresent(Int.self, forKey: .pages) ?? 1
+        hasMore = page < pages
     }
 }
 
