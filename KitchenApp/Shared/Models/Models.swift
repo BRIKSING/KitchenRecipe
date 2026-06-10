@@ -156,14 +156,17 @@ struct PaginatedResponse<T: Decodable>: Decodable {
     let total: Int
     let page: Int
     let perPage: Int
-    let hasMore: Bool
+    let pages: Int
+
+    /// Бэкенд отдаёт общее число страниц (`pages`); наличие следующей выводим из текущей.
+    var hasMore: Bool { page < pages }
 
     enum CodingKeys: String, CodingKey {
-        case data
+        case data     = "items"
         case total
         case page
         case perPage  = "per_page"
-        case hasMore  = "has_more"
+        case pages
     }
 }
 
