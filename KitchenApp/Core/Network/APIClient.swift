@@ -33,6 +33,22 @@ final class APIClient {
         KeychainService.clearAll()
     }
 
+    /// Инвалидирует refresh-токен на сервере.
+    /// Бэкенд (`POST /auth/logout`) ожидает refresh-токен в заголовке
+    /// `Authorization: Bearer` и отвечает `204 No Content` (без тела),
+    /// поэтому отправляем именно refresh-токен и не декодируем ответ.
+    func logout() async {
+        defer { clearTokens() }
+        guard let refreshToken = KeychainService.refreshToken else { return }
+
+        let url = baseURL.appendingPathComponent(Endpoint.logout.path)
+        var req = URLRequest(url: url)
+        req.httpMethod = Endpoint.logout.method
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+
+        _ = try? await session.data(for: req)
+    }
+
     var isAuthenticated: Bool { KeychainService.accessToken != nil }
 
     // MARK: - Generic request

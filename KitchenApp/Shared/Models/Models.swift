@@ -176,10 +176,24 @@ struct PaginatedResponse<T: Decodable>: Decodable {
 struct AuthTokens: Decodable {
     let accessToken: String
     let refreshToken: String
+    let user: AuthUser?
 
     enum CodingKeys: String, CodingKey {
         case accessToken  = "access_token"
         case refreshToken = "refresh_token"
+        case user
+    }
+}
+
+struct AuthUser: Decodable {
+    let id: String
+    let email: String
+    let username: String
+    let isAdmin: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, email, username
+        case isAdmin = "is_admin"
     }
 }
 
