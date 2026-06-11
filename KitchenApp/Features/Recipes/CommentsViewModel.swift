@@ -38,7 +38,7 @@ final class CommentsViewModel: ObservableObject {
         do {
             let query = CommentsQuery(page: currentPage)
             let response: PaginatedResponse<Comment> = try await api.request(.recipeComments(recipeId, query))
-            comments += response.data
+            comments += response.items
             hasMore = response.hasMore
             currentPage += 1
         } catch {

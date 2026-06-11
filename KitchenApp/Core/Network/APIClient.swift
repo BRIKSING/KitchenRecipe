@@ -130,16 +130,18 @@ final class APIClient {
             throw NetworkError.unauthorized
         }
 
-        struct RefreshBody: Encodable { let refresh_token: String }
         struct RefreshResponse: Decodable { let access_token: String }
 
         let components = URLComponents(url: baseURL.appendingPathComponent("/auth/refresh"), resolvingAgainstBaseURL: false)!
         var req = URLRequest(url: components.url!)
         req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try JSONEncoder().encode(RefreshBody(refresh_token: refreshToken))
+        // Бэкенд ожидает refresh-токен в заголовке Authorization: Bearer, а не в теле запроса.
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
 
-        let (data, _) = try await session.data(for: req)
+        let (data, response) = try await session.data(for: req)
+        if let http = response as? HTTPURLResponse, http.statusCode == 401 {
+            throw NetworkError.unauthorized
+        }
         let result = try decoder.decode(RefreshResponse.self, from: data)
         KeychainService.accessToken = result.access_token
         return result.access_token

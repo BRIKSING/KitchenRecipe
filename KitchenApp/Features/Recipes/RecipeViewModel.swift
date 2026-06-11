@@ -31,7 +31,7 @@ final class RecipeViewModel: ObservableObject {
 
         do {
             let response: PaginatedResponse<RecipeListItem> = try await api.request(.recipes(q))
-            recipes += response.data
+            recipes += response.items
             hasMore = response.hasMore
             currentPage += 1
         } catch {

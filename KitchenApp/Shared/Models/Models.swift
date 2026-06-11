@@ -152,19 +152,23 @@ struct Recipe: Codable, Identifiable {
 // MARK: - Paginated response
 
 struct PaginatedResponse<T: Decodable>: Decodable {
-    let data: [T]
+    let items: [T]
     let total: Int
     let page: Int
     let perPage: Int
-    let hasMore: Bool
+    let pages: Int
 
     enum CodingKeys: String, CodingKey {
-        case data
+        case items
         case total
         case page
         case perPage  = "per_page"
-        case hasMore  = "has_more"
+        case pages
     }
+
+    /// Бэкенд отдаёт общее число страниц (`pages`), а не флаг `has_more`.
+    /// Вычисляем наличие следующей страницы локально.
+    var hasMore: Bool { page < pages }
 }
 
 // MARK: - Auth responses
