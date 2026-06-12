@@ -72,5 +72,6 @@ final class AuthViewModel: ObservableObject {
     }
 }
 
-// Helper for endpoints that return no body
-struct EmptyResponse: Decodable {}
+// EmptyResponse (для эндпоинтов без тела ответа, напр. logout)
+// определён в Shared/Models/Models.swift — здесь дублировать нельзя
+// (иначе "Invalid redeclaration of 'EmptyResponse'").
