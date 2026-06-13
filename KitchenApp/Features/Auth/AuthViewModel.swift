@@ -23,7 +23,7 @@ final class AuthViewModel: ObservableObject {
             let body = LoginRequest(email: email, password: password)
             let tokens: AuthTokens = try await api.request(.login(body), body: body)
             api.setTokens(access: tokens.accessToken, refresh: tokens.refreshToken)
-            storeUserInfo(email: email, username: nil)
+            storeUserInfo(email: tokens.user?.email ?? email, username: tokens.user?.username)
             isAuthenticated = true
         } catch {
             ErrorBannerState.shared.show(error)
@@ -37,7 +37,7 @@ final class AuthViewModel: ObservableObject {
             let body = RegisterRequest(email: email, username: username, password: password)
             let tokens: AuthTokens = try await api.request(.register(body), body: body)
             api.setTokens(access: tokens.accessToken, refresh: tokens.refreshToken)
-            storeUserInfo(email: email, username: username)
+            storeUserInfo(email: tokens.user?.email ?? email, username: tokens.user?.username ?? username)
             isAuthenticated = true
         } catch {
             ErrorBannerState.shared.show(error)
@@ -46,7 +46,7 @@ final class AuthViewModel: ObservableObject {
 
     func logout() {
         Task {
-            try? await api.request(.logout) as EmptyResponse
+            await api.revokeRefreshToken()
             api.clearTokens()
             clearUserInfo()
             isAuthenticated = false
@@ -71,6 +71,3 @@ final class AuthViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "user.username")
     }
 }
-
-// Helper for endpoints that return no body
-struct EmptyResponse: Decodable {}

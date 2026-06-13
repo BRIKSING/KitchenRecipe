@@ -176,11 +176,20 @@ struct PaginatedResponse<T: Decodable>: Decodable {
 struct AuthTokens: Decodable {
     let accessToken: String
     let refreshToken: String
+    let user: AuthUser?
 
     enum CodingKeys: String, CodingKey {
         case accessToken  = "access_token"
         case refreshToken = "refresh_token"
+        case user
     }
+}
+
+/// Профиль пользователя, который бэкенд возвращает в ответах /auth/login и /auth/register.
+struct AuthUser: Decodable {
+    let id: UUID
+    let email: String
+    let username: String
 }
 
 struct UploadResponse: Decodable {

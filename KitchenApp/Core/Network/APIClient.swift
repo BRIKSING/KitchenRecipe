@@ -35,6 +35,22 @@ final class APIClient {
 
     var isAuthenticated: Bool { KeychainService.accessToken != nil }
 
+    /// Инвалидация сессии на сервере.
+    ///
+    /// Бэкенд (`POST /auth/logout`) ожидает в заголовке `Authorization: Bearer`
+    /// именно **refresh**-токен — он хеширует его и помечает запись `revoked = true`.
+    /// Поэтому отправлять access-токен (как делает обычный `request`) бесполезно.
+    /// Ответ — `204 No Content`, тело не декодируем.
+    func revokeRefreshToken() async {
+        guard let refreshToken = KeychainService.refreshToken,
+              let url = URLComponents(url: baseURL.appendingPathComponent(Endpoint.logout.path),
+                                      resolvingAgainstBaseURL: false)?.url else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = Endpoint.logout.method
+        request.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+        _ = try? await session.data(for: request)
+    }
+
     // MARK: - Generic request
 
     func request<T: Decodable>(_ endpoint: Endpoint, body: Encodable? = nil) async throws -> T {
