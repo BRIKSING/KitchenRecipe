@@ -46,7 +46,7 @@ final class AuthViewModel: ObservableObject {
 
     func logout() {
         Task {
-            try? await api.request(.logout) as EmptyResponse
+            await api.logout()
             api.clearTokens()
             clearUserInfo()
             isAuthenticated = false
@@ -71,6 +71,3 @@ final class AuthViewModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "user.username")
     }
 }
-
-// Helper for endpoints that return no body
-struct EmptyResponse: Decodable {}

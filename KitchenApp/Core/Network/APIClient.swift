@@ -123,6 +123,22 @@ final class APIClient {
         }
     }
 
+    // MARK: - Logout
+
+    /// Бэкенд `/auth/logout` ожидает refresh-токен в заголовке `Authorization: Bearer`
+    /// (а не access-токен) и отвечает `204 No Content` с пустым телом.
+    /// Поэтому запрос строится вручную, минуя общий интерсептор, и тело ответа не декодируется.
+    func logout() async {
+        guard let refreshToken = KeychainService.refreshToken else { return }
+
+        let components = URLComponents(url: baseURL.appendingPathComponent("/auth/logout"), resolvingAgainstBaseURL: false)!
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+
+        _ = try? await session.data(for: req)
+    }
+
     // MARK: - Token refresh
 
     private func refreshAccessToken() async throws -> String {
