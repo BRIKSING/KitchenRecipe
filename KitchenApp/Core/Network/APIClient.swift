@@ -123,6 +123,23 @@ final class APIClient {
         }
     }
 
+    // MARK: - Logout
+
+    /// Бэкенд инвалидирует именно refresh-токен и читает его из заголовка
+    /// Authorization: Bearer (POST /auth/logout → 204 No Content), поэтому
+    /// generic-request с access-токеном здесь не подходит.
+    func logout() async throws {
+        guard let refreshToken = KeychainService.refreshToken else { return }
+
+        let components = URLComponents(url: baseURL.appendingPathComponent("/auth/logout"), resolvingAgainstBaseURL: false)!
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+
+        // Ответ 204 без тела — не декодируем, достаточно факта отправки.
+        _ = try? await session.data(for: req)
+    }
+
     // MARK: - Token refresh
 
     private func refreshAccessToken() async throws -> String {
