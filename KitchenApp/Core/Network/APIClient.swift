@@ -35,6 +35,19 @@ final class APIClient {
 
     var isAuthenticated: Bool { KeychainService.accessToken != nil }
 
+    /// Выход из аккаунта.
+    /// Бэкенд ожидает refresh-токен в заголовке `Authorization: Bearer` и отвечает
+    /// 204 No Content (без тела), поэтому отправляем запрос напрямую, минуя generic-request:
+    /// тот подставил бы access-токен и попытался декодировать пустой ответ.
+    func logout() async {
+        guard let refreshToken = KeychainService.refreshToken else { return }
+        let components = URLComponents(url: baseURL.appendingPathComponent("/auth/logout"), resolvingAgainstBaseURL: false)!
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+        _ = try? await session.data(for: req)
+    }
+
     // MARK: - Generic request
 
     func request<T: Decodable>(_ endpoint: Endpoint, body: Encodable? = nil) async throws -> T {

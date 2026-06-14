@@ -10,7 +10,8 @@ struct RegisterView: View {
     @State private var confirm  = ""
 
     private var isValid: Bool {
-        !email.isEmpty && !username.isEmpty && password.count >= 6 && password == confirm
+        // Требования бэкенда: username 3–50 символов, пароль 8–100 символов
+        !email.isEmpty && username.count >= 3 && password.count >= 8 && password == confirm
     }
 
     var body: some View {
@@ -26,7 +27,7 @@ struct RegisterView: View {
             }
 
             Section("Пароль") {
-                SecureField("Пароль (мин. 6 символов)", text: $password)
+                SecureField("Пароль (мин. 8 символов)", text: $password)
                     .textContentType(.newPassword)
 
                 SecureField("Повторите пароль", text: $confirm)
