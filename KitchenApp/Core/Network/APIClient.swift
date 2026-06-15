@@ -123,6 +123,20 @@ final class APIClient {
         }
     }
 
+    // MARK: - Logout
+
+    /// Бэкенд инвалидирует refresh-токен по заголовку `Authorization: Bearer <refresh_token>`
+    /// (а не access-токен, который автоматически подставляет `buildRequest`), и отвечает 204/пустым
+    /// телом. Поэтому запрос собирается вручную, а тело ответа игнорируется.
+    func logout() async {
+        guard let refreshToken = KeychainService.refreshToken else { return }
+        let components = URLComponents(url: baseURL.appendingPathComponent("/auth/logout"), resolvingAgainstBaseURL: false)!
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+        _ = try? await session.data(for: req)
+    }
+
     // MARK: - Token refresh
 
     private func refreshAccessToken() async throws -> String {
