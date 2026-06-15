@@ -33,6 +33,19 @@ final class APIClient {
         KeychainService.clearAll()
     }
 
+    /// Завершение сессии на сервере.
+    /// Бэкенд инвалидирует именно refresh-токен и читает его из заголовка
+    /// `Authorization: Bearer` (как и `/auth/refresh`), поэтому отправляем
+    /// refresh-токен, а не access-токен. Ответ — 204 No Content.
+    func logout() async {
+        guard let refreshToken = KeychainService.refreshToken else { return }
+        let components = URLComponents(url: baseURL.appendingPathComponent("/auth/logout"), resolvingAgainstBaseURL: false)!
+        var req = URLRequest(url: components.url!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+        _ = try? await session.data(for: req)
+    }
+
     var isAuthenticated: Bool { KeychainService.accessToken != nil }
 
     // MARK: - Generic request

@@ -21,9 +21,9 @@ final class AuthViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let body = LoginRequest(email: email, password: password)
-            let tokens: AuthTokens = try await api.request(.login(body), body: body)
-            api.setTokens(access: tokens.accessToken, refresh: tokens.refreshToken)
-            storeUserInfo(email: email, username: nil)
+            let resp: AuthResponse = try await api.request(.login(body), body: body)
+            api.setTokens(access: resp.accessToken, refresh: resp.refreshToken)
+            storeUserInfo(email: resp.user?.email ?? email, username: resp.user?.username)
             isAuthenticated = true
         } catch {
             ErrorBannerState.shared.show(error)
@@ -35,9 +35,9 @@ final class AuthViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let body = RegisterRequest(email: email, username: username, password: password)
-            let tokens: AuthTokens = try await api.request(.register(body), body: body)
-            api.setTokens(access: tokens.accessToken, refresh: tokens.refreshToken)
-            storeUserInfo(email: email, username: username)
+            let resp: AuthResponse = try await api.request(.register(body), body: body)
+            api.setTokens(access: resp.accessToken, refresh: resp.refreshToken)
+            storeUserInfo(email: resp.user?.email ?? email, username: resp.user?.username ?? username)
             isAuthenticated = true
         } catch {
             ErrorBannerState.shared.show(error)
@@ -46,7 +46,7 @@ final class AuthViewModel: ObservableObject {
 
     func logout() {
         Task {
-            try? await api.request(.logout) as EmptyResponse
+            await api.logout()
             api.clearTokens()
             clearUserInfo()
             isAuthenticated = false
@@ -72,5 +72,30 @@ final class AuthViewModel: ObservableObject {
     }
 }
 
-// Helper for endpoints that return no body
-struct EmptyResponse: Decodable {}
+// MARK: - Auth response
+
+/// Ответ бэкенда на `/auth/login` и `/auth/register`.
+/// Содержит пару токенов и сведения о пользователе (`user`).
+private struct AuthResponse: Decodable {
+    let accessToken: String
+    let refreshToken: String
+    let user: AuthUser?
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken  = "access_token"
+        case refreshToken = "refresh_token"
+        case user
+    }
+
+    struct AuthUser: Decodable {
+        let id: UUID
+        let email: String
+        let username: String
+        let isAdmin: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case id, email, username
+            case isAdmin = "is_admin"
+        }
+    }
+}
