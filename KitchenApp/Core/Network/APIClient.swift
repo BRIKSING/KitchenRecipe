@@ -123,6 +123,22 @@ final class APIClient {
         }
     }
 
+    // MARK: - Logout
+
+    /// Бэкенд `POST /auth/logout` ревокирует именно refresh-токен и ожидает его
+    /// в заголовке `Authorization: Bearer` (как и `/auth/refresh`), а не access-токен,
+    /// который автоматически подставляет общий `request`. Ответ — 204 No Content без
+    /// тела, поэтому результат не декодируем, а ошибки сети игнорируем: локальные
+    /// токены всё равно очищаются вызывающей стороной.
+    func logout() async {
+        guard let refreshToken = KeychainService.refreshToken else { return }
+        let url = baseURL.appendingPathComponent("/auth/logout")
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(refreshToken)", forHTTPHeaderField: "Authorization")
+        _ = try? await session.data(for: req)
+    }
+
     // MARK: - Token refresh
 
     private func refreshAccessToken() async throws -> String {
