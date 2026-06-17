@@ -20,7 +20,9 @@ struct RecipesQuery {
         if let category   = category   { items.append(.init(name: "category",   value: category.uuidString)) }
         if let difficulty = difficulty { items.append(.init(name: "difficulty",  value: difficulty.rawValue)) }
         if let maxTime    = maxTime    { items.append(.init(name: "max_time",    value: String(maxTime))) }
-        tags.forEach { items.append(.init(name: "tags[]", value: $0.uuidString)) }
+        // Бэкенд (Fastify, дефолтный парсер querystring) ждёт повторяющийся
+        // параметр `tags`, а не `tags[]` — иначе Zod-схема фильтра его не видит.
+        tags.forEach { items.append(.init(name: "tags", value: $0.uuidString)) }
         return items
     }
 }
@@ -160,7 +162,10 @@ enum Endpoint {
     var queryItems: [URLQueryItem]? {
         switch self {
         case .recipes(let query):            return query.queryItems
-        case .tags(let q):                   return q.map { [.init(name: "q", value: $0)] }
+        case .tags(let q):
+            var items: [URLQueryItem] = [.init(name: "per_page", value: "50")]
+            if let q { items.append(.init(name: "q", value: q)) }
+            return items
         case .recipeComments(_, let q):      return q.queryItems
         default:                             return nil
         }

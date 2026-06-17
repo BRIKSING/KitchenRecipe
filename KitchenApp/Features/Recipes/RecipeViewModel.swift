@@ -56,8 +56,10 @@ final class RecipeViewModel: ObservableObject {
 
     func loadTags(q: String? = nil) async {
         do {
-            let loaded: [Tag] = try await api.request(.tags(q: q))
-            tags = loaded
+            // GET /tags отдаёт пагинированную обёртку { items, total, ... },
+            // а не голый массив — декодируем и берём items.
+            let response: PaginatedResponse<Tag> = try await api.request(.tags(q: q))
+            tags = response.items
         } catch {
             // Non-fatal
         }
