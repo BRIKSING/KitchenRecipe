@@ -1,5 +1,6 @@
 import SwiftUI
 import Speech
+import AVFoundation
 
 struct CookingSessionView: View {
     let recipe: Recipe
