@@ -239,12 +239,27 @@ final class EditorViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            // 1. Upload cover image
+            // 1. Upload cover image — бэкенд хранит S3-ключ из ответа `key`
+            //    в поле рецепта `cover_image`, поэтому ключ нужно сохранить.
+            var coverImageKey: String?
             if let image = coverImage, let data = image.jpegData(compressionQuality: 0.85) {
-                let _: UploadResponse = try await api.upload(imageData: data, to: .uploadImage)
+                let upload: UploadResponse = try await api.upload(imageData: data, to: .uploadImage)
+                coverImageKey = upload.key
             }
 
-            // 2. Create recipe skeleton
+            // 2. Create recipe — ингредиенты бэкенд принимает инлайн в теле.
+            let ingredientInputs: [IngredientInput] = ingredients
+                .filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+                .enumerated()
+                .map { index, ing in
+                    IngredientInput(
+                        name: ing.name.trimmingCharacters(in: .whitespaces),
+                        amount: Double(ing.amount.replacingOccurrences(of: ",", with: ".")),
+                        unit: ing.unit.isEmpty ? nil : ing.unit,
+                        sortOrder: index + 1
+                    )
+                }
+
             let req = RecipeCreateRequest(
                 title: title.trimmingCharacters(in: .whitespaces),
                 description: recipeDescription.isEmpty ? nil : recipeDescription,
@@ -252,6 +267,8 @@ final class EditorViewModel: ObservableObject {
                 difficulty: difficulty.rawValue,
                 cookTimeMin: cookTimeMin,
                 servings: servings,
+                coverImage: coverImageKey,
+                ingredients: ingredientInputs.isEmpty ? nil : ingredientInputs,
                 tagIds: selectedTagIds.isEmpty ? nil : Array(selectedTagIds)
             )
             let created: RecipeIDResponse = try await api.request(.createRecipe(req), body: req)

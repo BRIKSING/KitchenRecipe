@@ -41,6 +41,23 @@ struct LoginRequest: Encodable {
     let password: String
 }
 
+/// Ингредиент в теле `POST /recipes`. Бэкенд принимает ингредиенты инлайн
+/// (`ingredientInputSchema`): `amount` — число (nullable), `unit` — строка
+/// (nullable), `sort_order` — целое (по умолчанию 0).
+struct IngredientInput: Encodable {
+    let name: String
+    let amount: Double?
+    let unit: String?
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case amount
+        case unit
+        case sortOrder = "sort_order"
+    }
+}
+
 struct RecipeCreateRequest: Encodable {
     let title: String
     let description: String?
@@ -48,6 +65,10 @@ struct RecipeCreateRequest: Encodable {
     let difficulty: String
     let cookTimeMin: Int
     let servings: Int
+    // Бэкенд `createRecipeSchema` хранит `cover_image` как S3-ключ (не URL),
+    // который возвращает `POST /upload/image` в поле `key`.
+    let coverImage: String?
+    let ingredients: [IngredientInput]?
     let tagIds: [UUID]?
 
     enum CodingKeys: String, CodingKey {
@@ -57,6 +78,8 @@ struct RecipeCreateRequest: Encodable {
         case difficulty
         case cookTimeMin = "cook_time_min"
         case servings
+        case coverImage  = "cover_image"
+        case ingredients
         case tagIds      = "tag_ids"
     }
 }
