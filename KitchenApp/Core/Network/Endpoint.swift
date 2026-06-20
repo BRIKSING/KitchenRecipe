@@ -41,6 +41,20 @@ struct LoginRequest: Encodable {
     let password: String
 }
 
+struct RecipeIngredientInput: Encodable {
+    let name: String
+    let amount: Double?
+    let unit: String?
+    let sortOrder: Int
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case amount
+        case unit
+        case sortOrder = "sort_order"
+    }
+}
+
 struct RecipeCreateRequest: Encodable {
     let title: String
     let description: String?
@@ -48,7 +62,14 @@ struct RecipeCreateRequest: Encodable {
     let difficulty: String
     let cookTimeMin: Int
     let servings: Int
+    // Бэкенд хранит в `cover_image` именно S3-ключ загруженного файла,
+    // а полный URL собирает сам (buildImageUrl). Передаём `key` из ответа
+    // POST /upload/image, а не готовый url.
+    let coverImage: String?
     let tagIds: [UUID]?
+    // Бэкенд (POST /recipes) создаёт ингредиенты инлайн из массива `ingredients`,
+    // отдельного эндпоинта для них нет — иначе введённые ингредиенты теряются.
+    let ingredients: [RecipeIngredientInput]?
 
     enum CodingKeys: String, CodingKey {
         case title
@@ -57,7 +78,9 @@ struct RecipeCreateRequest: Encodable {
         case difficulty
         case cookTimeMin = "cook_time_min"
         case servings
+        case coverImage  = "cover_image"
         case tagIds      = "tag_ids"
+        case ingredients
     }
 }
 

@@ -239,12 +239,28 @@ final class EditorViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            // 1. Upload cover image
+            // 1. Upload cover image — сохраняем S3-ключ, чтобы привязать к рецепту
+            var coverKey: String?
             if let image = coverImage, let data = image.jpegData(compressionQuality: 0.85) {
-                let _: UploadResponse = try await api.upload(imageData: data, to: .uploadImage)
+                let uploaded: UploadResponse = try await api.upload(imageData: data, to: .uploadImage)
+                coverKey = uploaded.key
             }
 
-            // 2. Create recipe skeleton
+            // 2. Собираем ингредиенты (бэкенд создаёт их инлайн при POST /recipes)
+            let ingredientInputs: [RecipeIngredientInput] = ingredients.enumerated().compactMap { index, ing in
+                let name = ing.name.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { return nil }
+                let amount = Double(ing.amount.replacingOccurrences(of: ",", with: "."))
+                let unit = ing.unit.trimmingCharacters(in: .whitespaces)
+                return RecipeIngredientInput(
+                    name: name,
+                    amount: amount,
+                    unit: unit.isEmpty ? nil : unit,
+                    sortOrder: index + 1
+                )
+            }
+
+            // 3. Create recipe (вместе с обложкой и ингредиентами)
             let req = RecipeCreateRequest(
                 title: title.trimmingCharacters(in: .whitespaces),
                 description: recipeDescription.isEmpty ? nil : recipeDescription,
@@ -252,21 +268,25 @@ final class EditorViewModel: ObservableObject {
                 difficulty: difficulty.rawValue,
                 cookTimeMin: cookTimeMin,
                 servings: servings,
-                tagIds: selectedTagIds.isEmpty ? nil : Array(selectedTagIds)
+                coverImage: coverKey,
+                tagIds: selectedTagIds.isEmpty ? nil : Array(selectedTagIds),
+                ingredients: ingredientInputs.isEmpty ? nil : ingredientInputs
             )
             let created: RecipeIDResponse = try await api.request(.createRecipe(req), body: req)
             let recipeId = created.id
 
-            // 3. Create steps
+            // 4. Create steps
             for (i, step) in steps.enumerated() {
                 guard !step.title.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-                let timerSec: Int? = step.timerEnabled ? (step.timerMinutes * 60 + step.timerSeconds) : nil
+                // Бэкенд требует timer_sec строго положительным, поэтому 0:0 не отправляем.
+                let total = step.timerMinutes * 60 + step.timerSeconds
+                let timerSec: Int? = (step.timerEnabled && total > 0) ? total : nil
                 let body = StepBody(title: step.title, description: step.description,
                                     sortOrder: i + 1, timerSec: timerSec)
                 let _: EmptyResponse = try await api.request(.createStep(recipeId: recipeId), body: body)
             }
 
-            // 4. Publish
+            // 5. Publish
             let _: EmptyResponse = try await api.request(.publishRecipe(recipeId))
 
             deleteDraft(context: context)
