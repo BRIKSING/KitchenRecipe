@@ -437,7 +437,12 @@ struct SettingsView: View {
 
     private func checkServer() async {
         serverCheckState = .checking
-        guard let url = URL(string: serverURL)?.appendingPathComponent("/health") else {
+        // Бэкенд отдаёт health-check на `GET /health`. `appendingPathComponent("/health")`
+        // из-за ведущего слэша даёт битый путь (`//health` / %2F), и проверка ложно
+        // сообщает о недоступности — собираем URL вручную с одним слэшем.
+        let base = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let healthURLString = base.hasSuffix("/") ? base + "health" : base + "/health"
+        guard !base.isEmpty, let url = URL(string: healthURLString) else {
             serverCheckState = .fail("Некорректный URL")
             return
         }

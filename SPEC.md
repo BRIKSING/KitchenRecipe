@@ -646,10 +646,10 @@ const envSchema = z.object({
 
 ### Этап 12 — iOS: настройки, категории, офлайн
 
-- [x] `SettingsView` — адрес сервера, руки-free настройки, аккаунт
-- [x] `CategoryView` — список рецептов по категории
-- [x] Offline-режим: кэш просмотренных рецептов в SwiftData
-- [x] Обработка `noConnection` — показ кэша + banner
+- [y] `SettingsView` — адрес сервера, руки-free настройки, аккаунт
+- [y] `CategoryView` — список рецептов по категории
+- [y] Offline-режим: кэш просмотренных рецептов в SwiftData
+- [y] Обработка `noConnection` — показ кэша + banner
 
 ### Этап 13 — Финализация и полировка
 
