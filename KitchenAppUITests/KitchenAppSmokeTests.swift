@@ -86,7 +86,7 @@ final class KitchenAppSmokeTests: XCTestCase {
             "Registration email field should appear"
         )
         XCTAssertTrue(
-            app.secureTextFields["Пароль"].exists,
+            app.secureTextFields["Пароль (мин. 6 символов)"].exists,
             "Registration password field should appear"
         )
     }
@@ -100,7 +100,7 @@ final class KitchenAppSmokeTests: XCTestCase {
         XCTAssertTrue(registerLink.waitForExistence(timeout: 8))
         registerLink.tap()
 
-        let registerButton = app.buttons["Зарегистрироваться"]
+        let registerButton = app.buttons["Создать аккаунт"]
         XCTAssertTrue(registerButton.waitForExistence(timeout: 5))
         XCTAssertFalse(registerButton.isEnabled, "Register button must be disabled when fields are empty")
     }

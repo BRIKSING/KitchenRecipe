@@ -653,13 +653,13 @@ const envSchema = z.object({
 
 ### Этап 13 — Финализация и полировка
 
-- [x] Локализация: RU + EN (Localizable.strings)
-- [x] Адаптация лейаутов для iPad (landscape + portrait)
-- [x] Dark Mode поддержка
-- [x] Accessibility (VoiceOver labels, Dynamic Type)
-- [x] App Icon и Launch Screen
-- [x] Тестфлайт-сборка + smoke-test на реальном устройстве
-- [x] Финальный ревью безопасности (Keychain, HTTPS, camera privacy)
+- [y] Локализация: RU + EN (Localizable.strings)
+- [y] Адаптация лейаутов для iPad (landscape + portrait)
+- [y] Dark Mode поддержка
+- [y] Accessibility (VoiceOver labels, Dynamic Type)
+- [y] App Icon и Launch Screen
+- [y] Тестфлайт-сборка + smoke-test на реальном устройстве
+- [y] Финальный ревью безопасности (Keychain, HTTPS, camera privacy)
 
 ---
 
