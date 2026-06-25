@@ -252,9 +252,13 @@ final class EditorViewModel: ObservableObject {
                 .filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
                 .enumerated()
                 .map { index, ing in
-                    IngredientInput(
+                    // Бэкенд `ingredientInputSchema` принимает `amount` только как
+                    // положительное число (`.positive()`), поэтому 0/пустое/нечисловое
+                    // значение отправляем как null, иначе POST /recipes вернёт 400.
+                    let parsedAmount = Double(ing.amount.replacingOccurrences(of: ",", with: "."))
+                    return IngredientInput(
                         name: ing.name.trimmingCharacters(in: .whitespaces),
-                        amount: Double(ing.amount.replacingOccurrences(of: ",", with: ".")),
+                        amount: (parsedAmount ?? 0) > 0 ? parsedAmount : nil,
                         unit: ing.unit.isEmpty ? nil : ing.unit,
                         sortOrder: index + 1
                     )
@@ -276,9 +280,19 @@ final class EditorViewModel: ObservableObject {
 
             // 3. Create steps
             for (i, step) in steps.enumerated() {
-                guard !step.title.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
-                let timerSec: Int? = step.timerEnabled ? (step.timerMinutes * 60 + step.timerSeconds) : nil
-                let body = StepBody(title: step.title, description: step.description,
+                let stepTitle = step.title.trimmingCharacters(in: .whitespaces)
+                guard !stepTitle.isEmpty else { continue }
+                // Бэкенд `createStepSchema` требует `timer_sec` строго положительным
+                // (`.positive()`): включённый таймер на 00:00 даёт 0 и ломает запрос,
+                // поэтому ноль трактуем как отсутствие таймера.
+                let computedTimer = step.timerMinutes * 60 + step.timerSeconds
+                let timerSec: Int? = (step.timerEnabled && computedTimer > 0) ? computedTimer : nil
+                // `createStepSchema` требует непустое `description` (min 1). Если описание
+                // шага пустое, подставляем заголовок, иначе POST /recipes/:id/steps вернёт
+                // 400 и публикация прервётся (форма валидирует только заголовок шага).
+                let stepDescription = step.description.trimmingCharacters(in: .whitespaces)
+                let body = StepBody(title: stepTitle,
+                                    description: stepDescription.isEmpty ? stepTitle : stepDescription,
                                     sortOrder: i + 1, timerSec: timerSec)
                 let _: EmptyResponse = try await api.request(.createStep(recipeId: recipeId), body: body)
             }
