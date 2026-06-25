@@ -78,8 +78,11 @@ struct Step: Codable, Identifiable {
 struct Ingredient: Codable, Identifiable {
     let id: UUID
     let name: String
-    let amount: Double
-    let unit: String
+    // Бэкенд `formatRecipe` отдаёт `amount` и `unit` как nullable
+    // (`ingredientInputSchema`: amount/unit — optional/nullable), поэтому
+    // оба поля опциональны, иначе декодирование `GET /recipes/{id}` падает.
+    let amount: Double?
+    let unit: String?
     let sortOrder: Int
 
     enum CodingKeys: String, CodingKey {

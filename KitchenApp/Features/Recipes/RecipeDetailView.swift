@@ -543,10 +543,15 @@ struct RecipeDetailView: View {
     }
 
     private func scaledAmount(_ ingredient: Ingredient) -> String {
-        let scaled = ingredient.amount * servingsMultiplier
+        // amount/unit опциональны (бэкенд отдаёт их nullable).
+        let unit = ingredient.unit.map { " \($0)" } ?? ""
+        guard let amount = ingredient.amount else {
+            return unit.trimmingCharacters(in: .whitespaces)
+        }
+        let scaled = amount * servingsMultiplier
         let display = scaled.truncatingRemainder(dividingBy: 1) == 0
             ? String(Int(scaled))
             : String(format: "%.1f", scaled)
-        return "\(display) \(ingredient.unit)"
+        return "\(display)\(unit)"
     }
 }
