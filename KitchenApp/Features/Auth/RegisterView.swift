@@ -9,8 +9,15 @@ struct RegisterView: View {
     @State private var password = ""
     @State private var confirm  = ""
 
+    // Валидация повторяет registerBodySchema бекенда (Zod), чтобы не отправлять
+    // заведомо отклоняемый запрос: username — 3–50 символов из латиницы/цифр/«_»,
+    // password — 8–100 символов. Иначе бэкенд возвращает 400 VALIDATION_ERROR.
     private var isValid: Bool {
-        !email.isEmpty && !username.isEmpty && password.count >= 6 && password == confirm
+        email.contains("@") &&
+        (3...50).contains(username.count) &&
+        username.allSatisfy { ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0) || $0 == "_" } &&
+        (8...100).contains(password.count) &&
+        password == confirm
     }
 
     var body: some View {
@@ -21,12 +28,13 @@ struct RegisterView: View {
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
 
-                TextField("Имя пользователя", text: $username)
+                TextField("Имя пользователя (3–50, латиница/цифры/_)", text: $username)
                     .autocapitalization(.none)
+                    .autocorrectionDisabled()
             }
 
             Section("Пароль") {
-                SecureField("Пароль (мин. 6 символов)", text: $password)
+                SecureField("Пароль (мин. 8 символов)", text: $password)
                     .textContentType(.newPassword)
 
                 SecureField("Повторите пароль", text: $confirm)
