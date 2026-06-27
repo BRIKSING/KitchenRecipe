@@ -17,13 +17,19 @@ struct RecipesQuery {
             URLQueryItem(name: "per_page", value: String(perPage))
         ]
         if let q          = q          { items.append(.init(name: "q",          value: q)) }
-        if let category   = category   { items.append(.init(name: "category",   value: category.uuidString)) }
+        // UUID в фильтрах шлём в нижнем регистре: `Foundation.UUID.uuidString`
+        // отдаёт строку в ВЕРХНЕМ регистре, а бэкенд хранит id в колонках типа
+        // `String`/`text` (Prisma `@default(uuid())` генерирует строчные UUID) и
+        // сравнивает их регистрозависимо (`where.category_id = category`,
+        // `tag_id: { in: ... }`). Без нормализации фильтр по категории/тегам
+        // никогда не совпадает и молча возвращает пустой список.
+        if let category   = category   { items.append(.init(name: "category",   value: category.uuidString.lowercased())) }
         if let difficulty = difficulty { items.append(.init(name: "difficulty",  value: difficulty.rawValue)) }
         if let maxTime    = maxTime    { items.append(.init(name: "max_time",    value: String(maxTime))) }
         // Бэкенд (Fastify, парсер querystring по умолчанию) ожидает повторяющийся
         // параметр `tags`, а не `tags[]`: recipeFiltersSchema читает `tags` как
         // union(string | string[]). Скобки в имени ломают фильтрацию по тегам.
-        tags.forEach { items.append(.init(name: "tags", value: $0.uuidString)) }
+        tags.forEach { items.append(.init(name: "tags", value: $0.uuidString.lowercased())) }
         return items
     }
 }
