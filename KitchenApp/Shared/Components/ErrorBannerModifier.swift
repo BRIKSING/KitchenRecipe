@@ -2,6 +2,15 @@ import SwiftUI
 
 // MARK: - Global error state
 
+/// Глобальный механизм показа ошибок (Этап 6).
+///
+/// `ErrorBannerState.shared` — общий синглтон-источник сообщения об ошибке.
+/// Любой слой (например, `APIClient`/ViewModel) может вызвать
+/// `ErrorBannerState.shared.show(_:)`, и баннер автоматически появится поверх
+/// текущего экрана и скроется через `duration` секунд.
+/// Модификатор `.errorBanner()` подключается один раз в корне сцены
+/// (`KitchenRecipeApp`), после чего доступен всему приложению.
+
 final class ErrorBannerState: ObservableObject {
     static let shared = ErrorBannerState()
     @Published var message: String?

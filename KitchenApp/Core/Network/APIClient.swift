@@ -2,6 +2,18 @@ import Foundation
 
 // MARK: - APIClient
 
+/// Базовый сетевой слой приложения (Этап 6).
+///
+/// Единая точка доступа к REST API бэкенда поверх `URLSession` + `async/await`.
+/// Реализует:
+/// - дженерик-запрос `request(_:body:)` с декодированием ответа в любой `Decodable`;
+/// - загрузку изображений `upload(imageData:mimeType:to:)` через `multipart/form-data`;
+/// - перехватчик авторизации: при `401` один раз пытается обновить access-токен
+///   (`refresh token flow`) и повторяет исходный запрос;
+/// - retry с экспоненциальной задержкой (до 3 попыток) для сетевых сбоев.
+///
+/// Используется как синглтон `APIClient.shared`. Базовый URL берётся из
+/// `UserDefaults` (ключ `serverURL`) и может быть переопределён в Настройках.
 final class APIClient {
     static let shared = APIClient()
 

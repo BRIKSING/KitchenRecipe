@@ -1,5 +1,14 @@
 import Foundation
 
+// MARK: - Domain models (Этап 6)
+//
+// Доменные/DTO-модели приложения и их декодирование из JSON бэкенда.
+// `CodingKeys` приводят snake_case-поля API к camelCase Swift
+// (`cook_time_min` → `cookTimeMin`, `cover_image_url` → `coverImageURL`,
+// `sort_order` → `sortOrder` и т.д.). Дата декодируется стратегией `.iso8601`,
+// настроенной в `APIClient`. Для списков используется дженерик
+// `PaginatedResponse<T>` с вычисляемым `hasMore`.
+
 // MARK: - User
 
 struct User: Decodable, Identifiable {

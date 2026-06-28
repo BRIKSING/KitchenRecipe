@@ -92,6 +92,14 @@ struct RecipeCreateRequest: Encodable {
 
 // MARK: - Endpoint
 
+/// Перечисление всех эндпоинтов API (Этап 6).
+///
+/// Каждый кейс описывает один маршрут бэкенда вместе с ассоциированными
+/// значениями (идентификаторы, тела запросов, query-параметры). Вычисляемые
+/// свойства предоставляют `APIClient` всё необходимое для сборки `URLRequest`:
+/// - `path` — путь относительно базового URL;
+/// - `method` — HTTP-метод (GET/POST/PUT/DELETE);
+/// - `queryItems` — параметры строки запроса (для списков, поиска, пагинации).
 enum Endpoint {
     // Auth
     case register(RegisterRequest)
