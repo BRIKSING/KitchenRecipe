@@ -2,7 +2,21 @@ import Foundation
 
 // MARK: - APIClient
 
+/// Центральный сетевой клиент приложения.
+///
+/// Единая точка доступа к REST-API бэкенда поверх `URLSession` и `async/await`.
+/// Отвечает за:
+/// - сборку `URLRequest` из ``Endpoint`` (путь, метод, query-параметры, тело);
+/// - подстановку `Authorization: Bearer <access>` из ``KeychainService``;
+/// - декодирование JSON-ответа в любой `Decodable`-тип (`dateDecodingStrategy = .iso8601`);
+/// - автоматический refresh access-токена при `401` и повтор запроса один раз;
+/// - retry с экспоненциальной задержкой при ``NetworkError/noConnection``;
+/// - multipart-загрузку изображений.
+///
+/// Используется как синглтон ``shared``. Базовый URL берётся из `UserDefaults`
+/// (ключ `serverURL`) и может меняться в рантайме через ``updateBaseURL(_:)``.
 final class APIClient {
+    /// Общий разделяемый экземпляр клиента.
     static let shared = APIClient()
 
     private let session: URLSession
@@ -37,6 +51,12 @@ final class APIClient {
 
     // MARK: - Generic request
 
+    /// Выполняет запрос к указанному ``Endpoint`` и декодирует ответ в `T`.
+    /// - Parameters:
+    ///   - endpoint: описание эндпоинта (путь, метод, query).
+    ///   - body: опциональное `Encodable`-тело, сериализуется в JSON.
+    /// - Returns: декодированный ответ типа `T`.
+    /// - Throws: ``NetworkError`` при сбое сети, авторизации, сервера или декодирования.
     func request<T: Decodable>(_ endpoint: Endpoint, body: Encodable? = nil) async throws -> T {
         let urlRequest = try buildRequest(endpoint, body: body)
         return try await execute(urlRequest, endpoint: endpoint)
@@ -44,6 +64,8 @@ final class APIClient {
 
     // MARK: - Multipart upload
 
+    /// Загружает изображение как `multipart/form-data` (поле `file`).
+    /// - Returns: ``UploadResponse`` с URL и S3-ключом загруженного файла.
     func upload(imageData: Data, mimeType: String = "image/jpeg", to endpoint: Endpoint) async throws -> UploadResponse {
         var request = try buildRequest(endpoint, body: nil)
         let boundary = UUID().uuidString

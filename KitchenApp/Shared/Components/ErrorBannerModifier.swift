@@ -2,6 +2,14 @@ import SwiftUI
 
 // MARK: - Global error state
 
+/// Глобальное состояние баннера ошибок.
+///
+/// Синглтон ``shared`` хранит текущее сообщение; любой слой приложения может
+/// показать ошибку через ``show(_:duration:)`` или ``show(_:)`` (для `Error`).
+/// Баннер автоматически скрывается по таймеру; повторный вызов сбрасывает
+/// предыдущий отложенный показ. Подключается к иерархии View модификатором
+/// ``SwiftUI/View/errorBanner()``.
+/// ``SwiftUI/View/errorBanner()``.
 final class ErrorBannerState: ObservableObject {
     static let shared = ErrorBannerState()
     @Published var message: String?

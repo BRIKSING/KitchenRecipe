@@ -1,5 +1,14 @@
 import Foundation
 
+// MARK: - Domain & DTO models
+//
+// Доменные модели и DTO клиента, отражающие формат ответов бэкенда
+// (см. SPEC.md §3.6). Поля с snake_case на сервере мапятся через `CodingKeys`
+// в camelCase Swift. Разделение на «лёгкие» и «полные» модели:
+// - `RecipeListItem` — облегчённая карточка для списка (`GET /recipes`);
+// - `Recipe` — полный рецепт с ингредиентами и шагами (`GET /recipes/{id}`);
+// - `PaginatedResponse<T>` — обёртка постраничных ответов с вычислимым `hasMore`.
+
 // MARK: - User
 
 struct User: Decodable, Identifiable {

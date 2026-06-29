@@ -2,6 +2,11 @@ import Foundation
 
 // MARK: - Recipes query
 
+/// Параметры запроса списка рецептов `GET /recipes`.
+///
+/// Инкапсулирует поиск, фильтры и пагинацию, а ``queryItems`` собирает из них
+/// корректные `URLQueryItem` (с нормализацией UUID и форматом массива тегов,
+/// который ожидает Fastify).
 struct RecipesQuery {
     var q: String?
     var category: UUID?
@@ -92,6 +97,13 @@ struct RecipeCreateRequest: Encodable {
 
 // MARK: - Endpoint
 
+/// Типобезопасное описание всех эндпоинтов API.
+///
+/// Каждый кейс — это один маршрут с ассоциированными значениями (id, тела
+/// запросов, query). ``path``, ``method`` и ``queryItems`` детерминированно
+/// выводятся из кейса, поэтому ``APIClient`` строит `URLRequest`, не зная
+/// деталей конкретного маршрута. Покрывает auth, рецепты, шаги, фото,
+/// категории/теги, загрузку медиа, а также комментарии и оценки.
 enum Endpoint {
     // Auth
     case register(RegisterRequest)
