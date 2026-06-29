@@ -1,5 +1,14 @@
 import SwiftUI
 
+// MARK: - RegisterView
+
+/// Экран регистрации нового аккаунта.
+///
+/// Форма с email, именем пользователя, паролем и его подтверждением. Локальная
+/// валидация (``isValid``) повторяет правила Zod-схемы бэкенда, чтобы не слать
+/// заведомо отклоняемый запрос. Регистрация выполняется через
+/// `authVM.register(...)`; при успехе пользователь сразу авторизован (токены
+/// выданы вместе с ответом), и корневой `App` переключается на `MainTabView`.
 struct RegisterView: View {
     @EnvironmentObject private var authVM: AuthViewModel
     @Environment(\.dismiss) private var dismiss

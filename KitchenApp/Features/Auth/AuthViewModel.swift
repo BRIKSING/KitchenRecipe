@@ -1,6 +1,21 @@
 import Foundation
 import Combine
 
+// MARK: - AuthViewModel
+
+/// Вью-модель аутентификации (`@MainActor`, `ObservableObject`).
+///
+/// Единый источник состояния авторизации для всего приложения. Отвечает за:
+/// - вход (``login(email:password:)``), регистрацию (``register(email:username:password:)``)
+///   и выход (``logout()``);
+/// - сохранение пары токенов в ``KeychainService`` через ``APIClient`` после успеха;
+/// - публикацию флага ``isAuthenticated``, по которому корневой `App` переключает
+///   `LoginView` ↔ `MainTabView` (защищённый роутинг);
+/// - хранение неконфиденциальных данных профиля (email, username) в `UserDefaults`.
+///
+/// Ошибки сетевых вызовов не пробрасываются наружу, а показываются глобальным
+/// баннером ``ErrorBannerState``. Создаётся один раз в корне как `@StateObject`
+/// и прокидывается через `environmentObject`.
 @MainActor
 final class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false

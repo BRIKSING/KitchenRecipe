@@ -1,6 +1,19 @@
 import Foundation
 import Security
 
+// MARK: - KeychainService
+
+/// Безопасное хранилище JWT-токенов в системном Keychain.
+///
+/// Access- и refresh-токены сохраняются как `kSecClassGenericPassword` с
+/// атрибутом доступности `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`: токены
+/// недоступны на заблокированном устройстве и не мигрируют в iCloud Keychain или
+/// зашифрованные бэкапы. Используется как stateless-`enum` (только статические
+/// члены) — экземпляр создавать не нужно.
+///
+/// Типобезопасные аксессоры ``accessToken`` / ``refreshToken`` (get/set/nil →
+/// удаление) скрывают низкоуровневые `SecItem*`-вызовы; ``clearAll()`` стирает
+/// обе записи при выходе из аккаунта.
 enum KeychainService {
     private static let accessTokenKey  = "com.kitchenrecipe.access_token"
     private static let refreshTokenKey = "com.kitchenrecipe.refresh_token"

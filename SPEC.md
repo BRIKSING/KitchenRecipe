@@ -593,11 +593,11 @@ const envSchema = z.object({
 
 ### Этап 7 — iOS: аутентификация
 
-- [y] `LoginView` + `RegisterView`
-- [y] `AuthViewModel` — login/register/logout
-- [y] Хранение токенов в Keychain
-- [y] Автоматическое обновление access token (interceptor)
-- [y] Защищённый роутинг: переход на главную после логина
+- [d] `LoginView` + `RegisterView`
+- [d] `AuthViewModel` — login/register/logout
+- [d] Хранение токенов в Keychain
+- [d] Автоматическое обновление access token (interceptor)
+- [d] Защищённый роутинг: переход на главную после логина
 
 ### Этап 8 — iOS: список и детали рецепта
 

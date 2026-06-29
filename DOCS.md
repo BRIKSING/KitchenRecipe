@@ -181,3 +181,128 @@ ErrorBannerState.shared.show(NetworkError.noConnection)
 ```
 
 ---
+
+## Этап 7 — iOS: аутентификация
+
+Полный клиентский флоу авторизации: экраны входа и регистрации, вью-модель с
+операциями login/register/logout, безопасное хранение токенов в Keychain,
+прозрачное обновление access-токена (interceptor) и защищённый роутинг —
+переключение на главный экран после успешной авторизации.
+
+### Состав этапа
+
+| Подзадача | Где реализовано |
+|---|---|
+| `LoginView` + `RegisterView` | `KitchenApp/Features/Auth/LoginView.swift`, `KitchenApp/Features/Auth/RegisterView.swift` |
+| `AuthViewModel` — login/register/logout | `KitchenApp/Features/Auth/AuthViewModel.swift` |
+| Хранение токенов в Keychain | `KitchenApp/Core/Network/KeychainService.swift` |
+| Автообновление access-токена (interceptor) | `KitchenApp/Core/Network/APIClient.swift` |
+| Защищённый роутинг (переход на главную) | `KitchenApp/KitchenRecipeApp.swift` |
+
+### Вью-модель: `AuthViewModel`
+
+`AuthViewModel` (`@MainActor`, `ObservableObject`) — единый источник состояния
+авторизации. Создаётся один раз в корне приложения как `@StateObject` и
+прокидывается в дерево через `environmentObject`.
+
+**Публикуемое состояние:**
+
+- `isAuthenticated: Bool` — главный флаг роутинга; при инициализации берётся из
+  `APIClient.isAuthenticated` (т. е. из наличия токена в Keychain), поэтому при
+  повторном запуске пользователь остаётся авторизованным;
+- `isLoading: Bool` — индикатор выполнения запроса (блокирует кнопки, показывает
+  `ProgressView`);
+- `userEmail` / `userUsername` — неконфиденциальные данные профиля для экрана
+  настроек.
+
+**Операции:**
+
+- `login(email:password:)` — `POST /auth/login`, при успехе сохраняет пару
+  токенов через `APIClient.setTokens(...)` и поднимает `isAuthenticated`;
+- `register(email:username:password:)` — `POST /auth/register`; бэкенд выдаёт
+  токены сразу вместе с ответом, поэтому после регистрации пользователь сразу
+  авторизован (отдельный логин не требуется);
+- `logout()` — вызывает `APIClient.logout()` (ревокация refresh-токена на
+  сервере), очищает Keychain и локальный профиль, опускает `isAuthenticated`.
+
+Сетевые ошибки наружу не пробрасываются — они показываются глобальным баннером
+`ErrorBannerState.shared.show(error)`. Конфиденциальные данные (токены) лежат
+**только** в Keychain; в `UserDefaults` хранятся лишь email и username.
+
+### Экраны входа и регистрации
+
+**`LoginView`** — стартовый экран неавторизованного пользователя: поля
+email/пароль, кнопка «Войти» (с `ProgressView` и блокировкой при пустых полях),
+переход на `RegisterView` через `navigationDestination`.
+
+**`RegisterView`** — форма регистрации (email, имя пользователя, пароль +
+подтверждение). Ключевая деталь — **локальная валидация `isValid` повторяет
+правила Zod-схемы бэкенда**, чтобы не отправлять заведомо отклоняемый запрос:
+
+- email содержит `@`;
+- username — 3–50 символов из латиницы, цифр и `_`;
+- password — 8–100 символов;
+- password совпадает с подтверждением.
+
+Иначе бэкенд вернул бы `400 VALIDATION_ERROR`. Кнопка «Создать аккаунт»
+заблокирована, пока форма невалидна.
+
+Оба экрана не вызывают сеть напрямую — только методы `AuthViewModel`. После
+успеха переключение экранов делает корневой `App` по `isAuthenticated`, а не сам
+экран.
+
+### Хранение токенов: `KeychainService`
+
+`KeychainService` — stateless-`enum` (только статические члены) поверх
+Security-фреймворка. Хранит access- и refresh-токены как
+`kSecClassGenericPassword`.
+
+- **Доступность `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`:** токены
+  читаются только на разблокированном устройстве и **не** мигрируют в iCloud
+  Keychain или зашифрованные бэкапы — это требование безопасности из `SPEC.md`
+  (§4: «Шифрование», и финальный security-review).
+- **Типобезопасные аксессоры** `accessToken` / `refreshToken` — get/set,
+  присваивание `nil` удаляет запись; `clearAll()` стирает обе записи при выходе.
+- Низкоуровневые `SecItemAdd/CopyMatching/Delete` скрыты в приватных
+  примитивах `save/load/delete`; `save` сначала делает `SecItemDelete`, чтобы
+  перезапись токена была идемпотентной.
+
+### Interceptor: автообновление access-токена
+
+Логика «прозрачного» refresh реализована в `APIClient` (документирована в
+рамках Этапа 6, здесь — со стороны auth-флоу):
+
+1. Любой запрос подставляет `Authorization: Bearer <access>` из Keychain.
+2. При ответе `401` (`NetworkError.unauthorized`) клиент **один раз** дёргает
+   `POST /auth/refresh`, передавая **refresh-токен в заголовке**
+   `Authorization: Bearer` (а не в теле), сохраняет новый access-токен в
+   Keychain и повторяет исходный запрос с обновлённым заголовком.
+3. Если refresh не удался — пробрасывается `unauthorized`; UI (корневой `App`)
+   по сбросу авторизации возвращает пользователя на `LoginView`.
+
+`logout()` тоже использует refresh-токен в заголовке — бэкенд ревокирует именно
+его; ответ `204 No Content`, поэтому тело не декодируется, а сетевые ошибки
+игнорируются (локальные токены всё равно чистит `AuthViewModel`).
+
+### Защищённый роутинг
+
+Корневой `KitchenRecipeApp` держит `AuthViewModel` как `@StateObject` и по
+`isAuthenticated` выбирает корневой экран:
+
+```swift
+Group {
+    if authViewModel.isAuthenticated {
+        MainTabView()
+    } else {
+        LoginView()
+    }
+}
+.environmentObject(authViewModel)
+.errorBanner()
+```
+
+Это единственная точка ветвления — экраны входа/регистрации не выполняют навигацию
+сами, а лишь меняют состояние во вью-модели. В `DEBUG`-сборках для XCUITests
+предусмотрен обход авторизации (`UI_TESTING_BYPASS_AUTH` инжектит плейсхолдер-токены).
+
+---

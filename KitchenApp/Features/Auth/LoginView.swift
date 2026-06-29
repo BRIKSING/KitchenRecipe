@@ -1,5 +1,13 @@
 import SwiftUI
 
+// MARK: - LoginView
+
+/// Экран входа — стартовый экран для неавторизованного пользователя.
+///
+/// Поля email/пароль, кнопка «Войти» (с индикатором загрузки и блокировкой при
+/// пустых полях) и переход на ``RegisterView``. Вход выполняется через
+/// `authVM.login(...)`; при успехе ``AuthViewModel/isAuthenticated`` становится
+/// `true`, и корневой `App` сам подменяет этот экран на `MainTabView`.
 struct LoginView: View {
     @EnvironmentObject private var authVM: AuthViewModel
     @State private var email    = ""
