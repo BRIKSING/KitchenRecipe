@@ -306,3 +306,179 @@ Group {
 предусмотрен обход авторизации (`UI_TESTING_BYPASS_AUTH` инжектит плейсхолдер-токены).
 
 ---
+
+## Этап 8 — iOS: список и детали рецепта
+
+Витрина рецептов: адаптивная сетка карточек с поиском, фильтрацией, пагинацией
+и pull-to-refresh, экран детальной карточки рецепта (hero-фото с параллаксом,
+мета-блок, ингредиенты с масштабированием порций, превью шагов) и двухуровневый
+кэш изображений (память + диск).
+
+### Состав этапа
+
+| Подзадача | Где реализовано |
+|---|---|
+| `RecipeListView` — сетка карточек (LazyVGrid, 2/3/4 колонки) | `KitchenApp/Features/Recipes/RecipeListView.swift` |
+| `RecipeCardView` — карточка (обложка, название, мета) | `KitchenApp/Features/Recipes/RecipeListView.swift` |
+| Поиск (`searchable` + debounce) | `KitchenApp/Features/Recipes/RecipeListView.swift` |
+| Фильтр-шторка (категория, сложность, время) | `FilterSheetView` в `RecipeListView.swift` |
+| Чипы активных фильтров | `FilterChip` / `filterChips` в `RecipeListView.swift` |
+| Пагинация (infinity scroll) | `RecipeListView.swift` + `RecipeViewModel.swift` |
+| Pull-to-refresh | `RecipeListView.swift` (`refreshable`) |
+| `RecipeDetailView` — hero, мета, ингредиенты, превью шагов | `KitchenApp/Features/Recipes/RecipeDetailView.swift` |
+| Масштабирование порций (×0.5/×1/×2/×3) | `RecipeDetailView.swift` |
+| Кэширование изображений (NSCache + disk) | `KitchenApp/Core/Cache/ImageCache.swift`, `KitchenApp/Shared/Components/CachedAsyncImage.swift` |
+
+Общий слой данных обоих экранов — `RecipeViewModel`
+(`KitchenApp/Features/Recipes/RecipeViewModel.swift`).
+
+### Вью-модель: `RecipeViewModel`
+
+`RecipeViewModel` (`@MainActor`, `ObservableObject`) обслуживает и список, и
+деталь рецепта. Публикуемое состояние: `recipes`, `isLoading`, `error`,
+`hasMore`, а также справочники `categories` и `tags` для фильтр-шторки.
+
+**Пагинация (`loadRecipes(query:reset:)`).** Ключевой метод загрузки списка:
+
+- хранит приватный `currentPage` (начиная с 1) и инкрементирует его после
+  каждой успешной страницы;
+- `reset: true` (первая загрузка, новый поиск/фильтр, pull-to-refresh)
+  обнуляет страницу, очищает `recipes` и поднимает `hasMore`;
+- защита от гонок: `guard !isLoading` отбрасывает параллельные вызовы (важно,
+  потому что триггер пагинации в списке срабатывает на `.task` последней
+  карточки), а `guard hasMore` прекращает дозагрузку на последней странице;
+- новые элементы **аппендятся** (`recipes += response.items`), а флаг
+  `hasMore` берётся из `PaginatedResponse.hasMore` (`page < pages` —
+  вычисляется на клиенте, см. Этап 6);
+- сетевые ошибки сохраняются в `error` (для экрана с кнопкой retry) **и**
+  показываются глобальным баннером `ErrorBannerState.shared.show(error)`.
+
+**Деталь и справочники.** `loadDetail(id:)` пробрасывает `GET /recipes/:id`
+наверх (ошибки обрабатывает сам экран — ему нужен офлайн-fallback).
+`loadCategories()` и `loadTags(q:)` грузят справочники для фильтра; их ошибки
+**не** фатальны (молча игнорируются) — фильтр остаётся работоспособным и без них.
+
+### Экран списка: `RecipeListView`
+
+`NavigationStack` с переключением состояний по данным вью-модели:
+
+- **загрузка первой страницы** (`isLoading && recipes.isEmpty`) → `skeletonGrid`
+  (плейсхолдеры `SkeletonCardView` с shimmer-анимацией);
+- **ошибка без данных** (`error != nil && recipes.isEmpty`) → `errorState` с
+  кнопкой «Повторить»;
+- **пустой результат** → системный `ContentUnavailableView`;
+- **данные** → `recipeGrid`.
+
+**Адаптивная сетка.** `LazyVGrid` с `GridItem(.adaptive(...))`. Диапазон ширины
+колонки зависит от `horizontalSizeClass`: на iPhone (`.compact`) — 155–240 pt
+(≈2 колонки), на iPad (`.regular`) — 200–280 pt (3–4 колонки). Это покрывает
+требование «2 колонки на iPhone, 3–4 на iPad» без жёсткого задания их числа.
+
+**Пагинация (infinity scroll).** У каждой карточки есть `.task`, который при
+появлении **последнего** элемента (`recipe.id == viewModel.recipes.last?.id`)
+вызывает `loadRecipes(query:)` без `reset` — подгружается следующая страница.
+Внизу сетки во время дозагрузки показывается `ProgressView`.
+
+**Pull-to-refresh.** `.refreshable` на `ScrollView` перезагружает первую
+страницу с `reset: true`.
+
+**Поиск с debounce.** `searchable` связан с `searchText`; `onChange` вызывает
+`scheduleSearch(_:)`, который отменяет предыдущую `Task` и ждёт **300 мс**
+(`Task.sleep`) перед запросом — реализует debounce из `SPEC.md` §2.4 без
+лишних обращений к сети при наборе. Пустая строка сбрасывает параметр `q` в
+`nil`.
+
+**Фильтры и чипы.** Кнопка в тулбаре открывает `FilterSheetView` (категория —
+`Picker`, сложность — сегментированный контрол, максимальное время — `Stepper`
+с шагом 5 мин, теги — мультиселект с поиском при количестве > 6). Шторка
+работает на локальных `@State` и применяет их в `query` только по кнопке
+«Применить», после чего перезагружает список. `hasActiveFilters` подсвечивает
+иконку фильтра, а `filterChips` рисует горизонтальную ленту чипов активных
+фильтров; нажатие на крестик чипа снимает отдельный фильтр, кнопка «Сбросить
+всё» — очищает все. Любое изменение фильтра запускает `loadRecipes(reset: true)`.
+
+**Навигация.** Карточка обёрнута в `NavigationLink(value: recipe.id)`, а
+`navigationDestination(for: UUID.self)` открывает `RecipeDetailView(recipeId:)`.
+Кнопка `+` в тулбаре открывает `RecipeEditorView` (Этап 11) как `sheet`.
+
+### Компонент карточки: `RecipeCardView`
+
+Карточка рецепта из `RecipeListItem` (облегчённая модель списка): обложка через
+`CachedAsyncImage` (фиксированная высота 120 pt, `scaledToFill` + `clipped`),
+название (до 2 строк), мета-строка (время + сложность через `Label`) и
+горизонтальная лента до 3 тегов-капсул. Вся карточка — единый
+accessibility-элемент (`children: .combine`) с локализованным
+`accessibilityLabel` (`accessibility.recipe_card`).
+
+Рядом определены вспомогательные `FilterChip` (чип фильтра с кнопкой удаления)
+и `SkeletonCardView` (skeleton-плейсхолдер с бесконечной shimmer-анимацией).
+
+### Экран детали: `RecipeDetailView`
+
+Принимает `recipeId: UUID`, грузит рецепт в `.task` и до загрузки показывает
+`ProgressView`. Контент — вертикальный `ScrollView` из секций, поверх которого
+закреплена кнопка «Начать приготовление».
+
+**Секции (по `SPEC.md` §2.5):**
+
+1. **Hero с параллаксом** — `heroSection` через `GeometryReader` в именованном
+   координатном пространстве `"scroll"`. При оттягивании вниз (`minY > 0`)
+   обложка растягивается (высота `280 + extraOffset`) и смещается с
+   коэффициентом 0.4 — классический stretch/parallax. Поверх — градиент и
+   название с категорией.
+2. **Мета-блок** — иконки время / порции / сложность с разделителями; каждый
+   `metaItem` — отдельный accessibility-элемент.
+3. **Теги** — горизонтальная лента капсул.
+4. **Описание** — expandable: `lineLimit(isDescriptionExpanded ? nil : 3)` с
+   кнопкой «Читать далее / Свернуть» и анимацией.
+5. **Ингредиенты** — список с масштабированием порций (см. ниже).
+6. **Шаги** — превью-список: кружок с номером, заголовок, опциональный таймер
+   (`formattedTimer`) и миниатюра первого фото (минимальный `sortOrder`).
+   Шаги и ингредиенты сортируются по `sortOrder` перед отрисовкой.
+7. **Закреплённая кнопка** — `startCookingButton` поверх `ScrollView` в `ZStack`
+   с фоном `.ultraThinMaterial`; открывает `CookingSessionView` (Этап 9) как
+   `fullScreenCover`.
+
+> Примечание: секции оценок и отзывов (`ratingSummarySection`,
+> `commentsPreviewSection`) относятся к пост-MVP фичам и здесь не описываются.
+
+**Масштабирование порций.** `servingsMultiplier` (1.0 по умолчанию)
+переключается кнопками ×½ / ×1 / ×2 / ×3. `scaledServings` пересчитывает число
+порций в мета-блоке (минимум 1), `scaledAmount` — количество каждого
+ингредиента: целые значения показываются без дробной части, иначе — с одним
+знаком после запятой; единица измерения берётся из `ingredient.unit`. Смена
+множителя анимируется через `contentTransition(.numericText())`.
+
+**Поделиться.** В тулбаре — `ShareLink` с текстом рецепта и deeplink
+`kitchenrecipe://recipe/<id>` (Share Sheet).
+
+**Офлайн-fallback.** `loadRecipe()` при успехе кэширует рецепт в SwiftData
+(`CachedRecipeDetail`), а при `NetworkError.noConnection` подставляет ранее
+закэшированную версию и показывает офлайн-баннер. (Детальнее офлайн-режим
+документируется в Этапе 12 — здесь это лишь точка интеграции.)
+
+### Кэш изображений: `ImageCache` + `CachedAsyncImage`
+
+Реализует требование `SPEC.md` §2.11 — двухуровневый кэш с TTL 7 дней.
+
+**`ImageCache`** (синглтон `shared`) — два уровня:
+
+- **Память** — `NSCache<NSString, UIImage>`, лимиты `countLimit = 100` и
+  `totalCostLimit = 50 MB`; «стоимость» элемента оценивается по числу пикселей
+  (`imageCost`), чтобы NSCache корректно вытеснял крупные изображения.
+- **Диск** — каталог `Caches/ImageCache/`. Ключ файла — экранированный
+  `absoluteString` URL. При чтении проверяется возраст файла по
+  `modificationDate`: если он старше **TTL = 7 дней**, запись считается
+  протухшей и игнорируется. Прочитанное с диска изображение поднимается обратно
+  в память. На диск пишется JPEG (`compressionQuality 0.85`).
+
+`image(for:)` идёт память → диск; `store(_:for:)` пишет в оба уровня;
+`prefetch(url:)` — фоновая предзагрузка, если изображения ещё нет в кэше.
+
+**`CachedAsyncImage`** — drop-in замена `AsyncImage` с тем же API
+(`url`, `content`, `placeholder`). В `.task(id: url)` сначала спрашивает
+`ImageCache`, при промахе грузит по сети через `URLSession`, кладёт результат
+в кэш и показывает. Используется и в карточках списка, и в hero/миниатюрах
+детали — поэтому повторные показы тех же обложек идут из кэша без сети.
+
+---
