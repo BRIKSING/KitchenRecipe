@@ -482,3 +482,155 @@ accessibility-элемент (`children: .combine`) с локализованн�
 детали — поэтому повторные показы тех же обложек идут из кэша без сети.
 
 ---
+
+## Этап 9 — iOS: режим приготовления
+
+Ключевой экран приложения — полноэкранный пошаговый режим готовки
+(`CookingSessionView`): слайдер фотографий шага с pinch-to-zoom, прогресс-бар,
+навигация кнопками и свайпом, обратный таймер с сохранением состояния между
+шагами (`TimerService`), блокировка автоблокировки экрана на время сессии и
+финальный экран «Готово!» с анимацией.
+
+### Состав этапа
+
+| Подзадача | Где реализовано |
+|---|---|
+| `CookingSessionView` — полноэкранный пошаговый режим | `KitchenApp/Features/Cooking/CookingSessionView.swift` |
+| Слайдер фотографий шага (TabView + PageTabViewStyle + pinch-to-zoom) | `photoSlider` в `CookingSessionView.swift` |
+| Прогресс-бар и навигация (кнопки + swipe-жест) | `progressBar` / `bottomNavBar` в `CookingSessionView.swift` |
+| `TimerService` — обратный отсчёт, пауза, звуковой сигнал | `KitchenApp/Features/Cooking/TimerService.swift` |
+| Блокировка автоблокировки экрана | `CookingSessionView.swift` (`isIdleTimerDisabled`) |
+| Экран завершения («Готово!» + анимация) | `CompletionView` в `CookingSessionView.swift` |
+
+Форматирование таймера (`MM:SS`) вынесено в расширение
+`Int.formattedTimer` (`KitchenApp/Shared/Extensions/Extensions.swift`).
+
+> Hands-free жесты (`HandGestureDetector`, `HandsFreeOverlayView`) и голосовые
+> команды (`VoiceCommandService`, `VoiceCommandOverlayView`) подключаются в этом
+> же экране, но относятся к Этапу 10 и пост-MVP соответственно — здесь
+> описываются лишь как точки интеграции.
+
+### Экран: `CookingSessionView`
+
+`struct CookingSessionView: View` принимает доменную модель `Recipe` и
+держит всё состояние сессии в `@State`. Шаги один раз сортируются по
+`sortOrder` (`sortedSteps`), а текущий шаг адресуется индексом
+`currentStepIndex`. Производные величины: `currentStep`, `totalSteps` и
+`stepProgress` (`(currentStepIndex + 1) / totalSteps`) для прогресс-бара.
+
+Тело — вертикальный `VStack` без отступов из шести зон: `progressBar`,
+`headerBar`, `photoSlider`, контент шага (`stepScrollContent`), `bottomNavBar`,
+плюс оверлеи жестов/голоса и `CompletionView` поверх всего в `ZStack`.
+
+**Жизненный цикл и блокировка автоблокировки.** В `.onAppear`
+устанавливается `UIApplication.shared.isIdleTimerDisabled = true` — экран не
+гаснет, пока пользователь готовит; в `.onDisappear` флаг возвращается в `false`,
+а таймер, детектор жестов и распознавание речи останавливаются. Это прямое
+выполнение требования `SPEC.md` §2.6 о блокировке автоблокировки на время
+сессии.
+
+**Шапка (`headerBar`).** Кнопка «✕» (`dismiss`), индикатор «Шаг N из M» с
+локализованным `accessibilityLabel` (`accessibility.step_progress`) и
+тумблер Hands-free.
+
+### Слайдер фотографий шага
+
+`photoSlider` рисует фото текущего шага, отсортированные по `sortOrder`:
+
+- **`TabView` со стилем `.page(indexDisplayMode: .never)`** — горизонтальный
+  пейджинг фотографий шага; собственный dot-индикатор рисуется вручную внизу
+  (активная точка крупнее) только при наличии более одного фото.
+- **Pinch-to-zoom.** `MagnificationGesture` меняет `photoScale`, ограниченный
+  диапазоном **1.0–4.0** (`max(1.0, min(4.0, lastPhotoScale * value))`);
+  `lastPhotoScale` фиксирует масштаб между жестами. По окончании жеста, если
+  масштаб почти вернулся к единице (< 1.05), он пружинно сбрасывается в 1.0.
+- **Двойной тап** переключает между 1.0 и 2.5 (зум/возврат) с пружинной
+  анимацией.
+- Фото грузятся через `CachedAsyncImage` (двухуровневый кэш Этапа 8); при
+  отсутствии фото показывается системный плейсхолдер `photo`.
+
+При смене шага (`.onChange(of: currentStepIndex)`) `photoPage` и масштаб
+сбрасываются, так что каждый шаг открывается с первого фото в исходном масштабе.
+
+### Контент шага и таймер
+
+`stepScrollContent` — `ScrollView` с заголовком и описанием шага; блок таймера
+(`timerControl`) показывается **только** если у шага задан `timerSec > 0`.
+
+`timerControl` отображает `timer.formattedTime` моноширинным шрифтом с
+`contentTransition(.numericText())` (плавная смена цифр), кнопку play/pause
+(`timer.toggle()`) и кнопку сброса (`arrow.counterclockwise`), которая заново
+конфигурирует таймер и очищает сохранённое состояние шага. По окончании отсчёта
+надпись и иконка становятся зелёными («Время вышло!»), а кнопка play/pause
+блокируется. Все управляющие элементы снабжены локализованными
+accessibility-метками (`accessibility.timer_play/pause/reset`).
+
+### Прогресс-бар и навигация
+
+**Прогресс-бар (`progressBar`).** Полоса высотой 4 pt: серый фон и оранжевая
+заливка шириной `width * stepProgress`, ширина анимируется при смене шага —
+заполняется по мере прохождения шагов.
+
+**Нижняя панель (`bottomNavBar`).** Кнопки «Назад»/«Вперёд» (на последнем шаге
+надпись меняется на «Готово» с галочкой) и центральный `stepDots` —
+скользящее окно максимум из 9 точек (`maxVisible`), центрированное вокруг
+текущего шага, чтобы индикатор не разрастался на длинных рецептах.
+
+**Свайп-жест.** На панель навешан `DragGesture(minimumDistance: 40)`: по
+окончании горизонтальный сдвиг (`abs(dx) > abs(dy) * 1.2`, |dx| > 40)
+трактуется как переход вперёд/назад — навигация дублируется свайпом помимо
+кнопок.
+
+`navigateNext()` на последнем шаге показывает `CompletionView`
+(`showCompletion = true`), иначе инкрементирует индекс; `navigatePrev()`
+защищён от ухода ниже нуля. Обе функции анимированы и переиспользуются
+жестами рук и голосовыми командами.
+
+### Сохранение состояния таймера между шагами
+
+Таймеры шагов независимы и **переживают переключение шагов** — требование
+`SPEC.md` §2.6. Состояние хранится в словаре
+`timerStates: [Int: (remaining, isFinished)]`:
+
+- `.onChange(of: currentStepIndex)` сначала вызывает `saveTimerState(for:
+  oldIndex)` — для шага с таймером сохраняет текущий остаток и флаг завершения,
+  затем ставит таймер на паузу;
+- `configureTimerForStep(newIndex)` для нового шага: если по индексу есть
+  сохранённое состояние — восстанавливает его (`timer.restore`), иначе заводит
+  таймер на полное `timerSec` (`timer.configure`);
+- кнопка сброса очищает запись (`timerStates[currentStepIndex] = nil`), и шаг
+  снова стартует с полного времени.
+
+### Сервис таймера: `TimerService`
+
+`TimerService` — `@MainActor`, `ObservableObject`. Публикуемое состояние:
+`remaining` (секунды), `isRunning`, `isFinished`. Внутренний отсчёт — это
+`Task` (`runTask`), который в цикле спит по 1 секунде (`Task.sleep`) и
+уменьшает `remaining`; такой подход не требует ручного управления
+`Timer`/`RunLoop` и автоматически отменяется при `Task.cancel()`.
+
+- `configure(seconds:)` — задаёт полное время и сбрасывает `isFinished`;
+  `restore(remaining:total:isFinished:)` — восстанавливает произвольное
+  состояние (используется при возврате на шаг).
+- `toggle()` / `resume()` / `pause()` — пуск/пауза; `resume()` не запускается на
+  нуле или завершённом таймере. `stop()` отменяет задачу без изменения
+  `remaining` (для очистки при уходе с экрана).
+- **Сигнал по окончании.** При `remaining == 0` сервис ставит
+  `isFinished = true` и проигрывает уведомление через `AudioToolbox`:
+  звук `AudioServicesPlaySystemSound(1315)` и/или вибрацию
+  (`kSystemSoundID_Vibrate`). Оба канала включаются по ключам `UserDefaults`
+  `timer.sound` и `timer.haptic` (по умолчанию `true`), которыми управляет
+  `SettingsView` (Этап 12).
+- `formattedTime` делегирует форматирование `remaining.formattedTimer`
+  (`MM:SS`).
+
+### Экран завершения: `CompletionView`
+
+Приватная `CompletionView` показывается поверх сессии после последнего шага
+(переход `.opacity`, `zIndex(1)`). По `.onAppear` запускаются две пружинные
+анимации: масштабирование иконки-галочки (`iconScale` 0.3 → 1.0) и проявление
+текста «Готово! / Приятного аппетита!» (`contentOpacity`). Кнопка «Оценить
+рецепт» открывает `RateRecipeSheet` (пост-MVP оценки), кнопка «Закрыть»
+вызывает `onClose` → `dismiss()` всей сессии.
+
+---
