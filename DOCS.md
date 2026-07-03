@@ -987,3 +987,199 @@ prev.x`. Поскольку фронтальная камера зеркалит
 Так пользователь не теряет введённые данные случайным жестом — требование §2.8.
 
 ---
+
+## Этап 12 — iOS: настройки, категории, офлайн
+
+Завершающий функциональный этап клиента: экран настроек (`SettingsView`),
+вкладка категорий с рецептами по категории (`CategoryView`) и офлайн-режим —
+кэш просмотренных рецептов в SwiftData с graceful-обработкой отсутствия сети.
+
+### Состав этапа
+
+| Подзадача | Где реализовано |
+|---|---|
+| `SettingsView` — адрес сервера, hands-free, аккаунт | `KitchenApp/Features/Settings/SettingsView.swift` |
+| `CategoryView` — список рецептов по категории | `KitchenApp/Features/Categories/CategoryView.swift`, `KitchenApp/Features/Categories/CategoryViewModel.swift` |
+| Offline: кэш просмотренных рецептов в SwiftData | `KitchenApp/Core/Persistence/CachedRecipeDetail.swift`, `KitchenApp/Features/Recipes/RecipeDetailView.swift` |
+| Обработка `noConnection` — показ кэша + banner | `KitchenApp/Features/Recipes/RecipeDetailView.swift`, `KitchenApp/Core/Network/NetworkError.swift` |
+
+### Экран настроек: `SettingsView`
+
+`SettingsView` (`Features/Settings/SettingsView.swift`) — это `Form` внутри
+`NavigationStack`, собранный из независимых секций-`computed property`. Такое
+разбиение (`serverSection`, `iCloudSyncSection`, `handsFreeSection`,
+`voiceCommandsSection`, `notificationsSection`, `languageSection`,
+`accountSection`, `aboutSection`) держит `body` компактным и позволяет
+править каждую секцию изолированно.
+
+Экран **не имеет отдельной вью-модели**: настройки — это набор простых
+булевых/числовых/строковых значений, которые хранятся в `UserDefaults`.
+Каждое поле объявлено как `@State` с инициализацией из `UserDefaults` и
+записью обратно в `.onChange`:
+
+```swift
+@State private var handsfreeDefault = UserDefaults.standard.bool(forKey: "handsfree.enabledByDefault")
+// …
+Toggle("Включать по умолчанию", isOn: $handsfreeDefault)
+    .onChange(of: handsfreeDefault) { _, new in
+        UserDefaults.standard.set(new, forKey: "handsfree.enabledByDefault")
+    }
+```
+
+Ключи `UserDefaults` — общий контракт между экранами: те же ключи читают
+`HandGestureDetector`/`CookingSessionView` (Этап 9–10) и `TimerService`
+(Этап 9). Для отсутствующих значений применяются дефолты: расширение
+`Double.nonzero(default:)` подменяет 0 (значение по умолчанию для не заданного
+`double(forKey:)`) на осмысленный дефолт, а `object(forKey:) as? Bool ?? true`
+даёт `true` для тумблеров звука/вибрации таймера.
+
+**Секции экрана** (соответствуют `SPEC.md` §2.9):
+
+| Секция | Содержимое |
+|---|---|
+| Сервер | поле URL, проверка доступности, предупреждение о незащищённом HTTP |
+| Синхронизация | тумблер iCloud, статус, дата последней синхронизации (Этап sync) |
+| Hands-Free | доступ к камере, тумблер по умолчанию, чувствительность свайпа, удержание кулака |
+| Голосовые команды | доступ к речи, тумблер по умолчанию, список команд |
+| Таймер | звук и вибрация по окончании |
+| Язык интерфейса | системный / RU / EN |
+| Аккаунт | имя, email, «Выйти», «Удалить аккаунт» |
+| О приложении | версия из `Bundle`, лицензии |
+
+**Секция «Сервер».** Поле привязано к ключу `serverURL`; при изменении оно не
+только пишется в `UserDefaults`, но и на лету перенастраивает базовый URL
+сетевого слоя через `APIClient.shared.updateBaseURL(_:)` (Этап 6), после чего
+статус проверки сбрасывается в `.idle`. Кнопка «Проверить доступность»
+запускает `checkServer()` — асинхронный `GET /health` с `timeoutInterval: 5`;
+результат моделируется приватным перечислением `ServerCheckState`
+(`idle / checking / ok(ms) / fail(msg)`), которое управляет отрисовкой строки
+статуса (спиннер, зелёная галочка с задержкой в мс, красный крест). Отдельно
+вычисляемое свойство `isInsecureURL` подсвечивает предупреждение, если адрес
+использует `http://` и не является локальным (`localhost` / `127.`) —
+требование безопасности §4 (HTTPS/TLS).
+
+**Секция «Hands-Free»** (`handsFreeSection`) документирована также в Этапе 10
+как точка настройки чувствительности: слайдер `swipeSensitivity` в диапазоне
+`0.02…0.10` (порог дельты запястья) и слайдер `fistHoldDuration` `0.5…2.0` с
+(время удержания кулака). `cameraPermissionRow` показывает текущий
+`AVAuthorizationStatus` и в зависимости от него предлагает «Запросить»
+(runtime-промпт `AVCaptureDevice.requestAccess`) или «Открыть настройки»
+(`UIApplication.openSettingsURLString`). Футер секции повторяет privacy-гарантию:
+видеопоток обрабатывается только на устройстве.
+
+**Секция «Аккаунт».** Имя и email берутся из `AuthViewModel`
+(`@EnvironmentObject`, Этап 7). «Выйти» вызывает `authVM.logout()`. «Удалить
+аккаунт» открывает `confirmationDialog` с деструктивным подтверждением — защита
+от случайного нажатия.
+
+Вложенные вспомогательные экраны реализованы как приватные `View` в том же
+файле: `VoiceCommandsHelpView` (справочник голосовых команд) и `LicensesView`
+(лицензии), открываемые через `NavigationLink`.
+
+### Вкладка категорий: `CategoryView`
+
+`CategoryView` — третий верхнеуровневый экран (см. `MainTabView`, Этап 6): на
+iPhone это вкладка TabBar, на iPad — пункт бокового меню
+`NavigationSplitView`. Экран построен на `CategoryViewModel` и делится на два
+уровня навигации.
+
+**`CategoryViewModel`** (`ObservableObject`, `@MainActor`) минималистичен:
+одно действие `loadCategories()` дергает `APIClient.request(.categories)` и
+публикует `categories` / `isLoading` / `error`. Guard `!isLoading`
+предотвращает дублирующие запросы (например, одновременный `.task` и
+`refreshable`), а ошибки пробрасываются в глобальный `ErrorBannerState.shared`
+(Этап 6).
+
+**Первый уровень — сетка категорий.** `CategoryView` в зависимости от
+состояния отрисовывает `ProgressView`, состояние ошибки с кнопкой «Повторить»,
+`ContentUnavailableView` для пустого списка или адаптивную сетку
+`LazyVGrid(.adaptive(minimum: 150))`. Каждая карточка — `CategoryCardView` —
+подбирает иконку SF Symbols и цвет акцента по `slug` категории (эвристика по
+подстрокам: `pasta`/`макар` → `fork.knife`, `soup`/`суп` →
+`cup.and.saucer.fill` и т. д.), что даёт визуальное разнообразие без
+серверных ассетов.
+
+**Второй уровень — рецепты категории.** Тап по карточке открывает
+`CategoryRecipesView` через `NavigationLink`. Этот экран **переиспользует**
+`RecipeViewModel` и `RecipeCardView` из Этапа 8: он формирует `RecipesQuery`
+с проставленным `category = category.id` и вызывает
+`loadRecipes(query:reset:)`. Поддержаны те же паттерны, что и в основном
+списке — скелетоны при первой загрузке, `infinity scroll` (догрузка при
+достижении последней карточки), `pull-to-refresh` и состояние ошибки с
+retry. Навигация к деталям — `navigationDestination(for: UUID.self)` →
+`RecipeDetailView(recipeId:)`.
+
+### Офлайн-кэш деталей рецепта (SwiftData)
+
+Офлайн-просмотр реализован на уровне `RecipeDetailView` и SwiftData-модели
+`CachedRecipeDetail`.
+
+**Модель `CachedRecipeDetail`** (`Core/Persistence/CachedRecipeDetail.swift`)
+— `@Model`, хранящий рецепт как сериализованный JSON, а не как граф связанных
+сущностей. Такой подход проще (одна запись = один рецепт) и переиспользует уже
+готовое `Codable`-декодирование доменной модели `Recipe`:
+
+```swift
+@Model
+final class CachedRecipeDetail {
+    var recipeId: String      // UUID в виде строки — ключ поиска
+    var recipeData: Data      // JSON рецепта (ISO-8601 даты)
+    var title: String
+    var cachedAt: Date        // метка времени для потенциального TTL/чистки
+
+    func decode() -> Recipe? { /* JSONDecoder(.iso8601) */ }
+}
+```
+
+Модель регистрируется в общем контейнере в `KitchenRecipeApp.swift`:
+`Schema([DraftRecipe.self, CachedRecipeDetail.self])`, т. е. кэш и черновики
+редактора (Этап 11) живут в одном SwiftData-хранилище.
+
+**Запись в кэш.** При каждой успешной загрузке деталей `RecipeDetailView`
+вызывает `cacheRecipe(_:)`: кодирует `Recipe` в JSON и делает upsert —
+`FetchDescriptor` с `#Predicate { $0.recipeId == idStr }` ищет существующую
+запись и обновляет её `recipeData`/`cachedAt`, иначе вставляет новую. Так кэш
+всегда содержит последнюю просмотренную версию рецепта.
+
+### Обработка `noConnection`: показ кэша + баннер
+
+Ключевая логика офлайн-режима сосредоточена в `RecipeDetailView.loadRecipe()`
+и опирается на типизированную ошибку `NetworkError.noConnection` (Этап 6):
+
+```swift
+private func loadRecipe() async {
+    do {
+        let r = try await viewModel.loadDetail(id: recipeId)
+        recipe = r
+        isOfflineMode = false
+        cacheRecipe(r)                       // онлайн → обновляем кэш
+    } catch NetworkError.noConnection {
+        if let cached = loadCachedRecipe() { // офлайн → достаём из SwiftData
+            recipe = cached
+            isOfflineMode = true
+            ErrorBannerState.shared.show("Нет соединения — показаны кэшированные данные")
+        }
+    } catch {
+        ErrorBannerState.shared.show(error)
+    }
+}
+```
+
+Разделение по типу ошибки принципиально: `noConnection` — не фатальная
+ситуация, а сигнал к фолбэку. `APIClient` перед этим уже выполнил три попытки
+с экспоненциальной задержкой (Этап 6), поэтому до `catch` доходят только
+действительно недоступные сети. Если кэшированная копия найдена, экран
+показывает её и переводит флаг `isOfflineMode = true`.
+
+**Визуальная индикация.** Пока `isOfflineMode == true`, поверх контента через
+`safeAreaInset(edge: .top)` закрепляется `offlineBanner` — оранжевая плашка с
+иконкой `wifi.slash` и текстом «Офлайн — кэшированные данные». Дополнительно
+однократно всплывает глобальный `ErrorBanner` (Этап 6). При следующей успешной
+загрузке (сеть вернулась) `isOfflineMode` сбрасывается в `false`, и баннер
+исчезает.
+
+Так выполняется требование §4 «Офлайн-режим клиента»: просмотр ранее открытых
+рецептов остаётся доступным без сети, а пользователь чётко видит, что данные
+могут быть неактуальны.
+
+---
