@@ -1183,3 +1183,229 @@ private func loadRecipe() async {
 могут быть неактуальны.
 
 ---
+
+## Этап 13 — Финализация и полировка
+
+Завершающий этап: приложение переводится на два языка, адаптируется под iPad
+(landscape + portrait), поддерживает Dark Mode и VoiceOver, получает иконку и
+launch screen, покрывается smoke-тестами для TestFlight-сборки и проходит
+финальный аудит безопасности (Keychain, HTTPS, приватность камеры).
+
+### Состав этапа
+
+| Подзадача | Где реализовано |
+|---|---|
+| Локализация RU + EN | `KitchenApp/Resources/ru.lproj/Localizable.strings`, `KitchenApp/Resources/en.lproj/Localizable.strings`, `Shared/Extensions/Extensions.swift` |
+| Адаптация лейаутов для iPad | `KitchenApp/MainTabView.swift`, `Features/Recipes/RecipeListView.swift` |
+| Dark Mode | `Resources/Assets.xcassets/AccentColor.colorset`, системные цвета во View-слое |
+| Accessibility (VoiceOver, Dynamic Type) | секция `accessibility.*` в `Localizable.strings`, `.accessibilityLabel(...)` во View |
+| App Icon и Launch Screen | `Resources/Assets.xcassets/AppIcon.appiconset` |
+| TestFlight-сборка + smoke-test | `ExportOptions.plist`, `KitchenAppUITests/` |
+| Финальный ревью безопасности | `Core/Security/SecurityAudit.swift`, `Core/Network/KeychainService.swift`, `Features/Settings/SettingsView.swift` |
+
+### Локализация: RU + EN
+
+Строки вынесены в два каталога `.lproj` с ключами в формате
+`Localizable.strings` (`"ключ" = "перевод";`). Русский — базовый язык, английский
+— полный перевод того же набора ключей:
+
+```
+Resources/
+├── ru.lproj/Localizable.strings   — базовый (RU)
+└── en.lproj/Localizable.strings   — перевод (EN)
+```
+
+Применяются **две стратегии ключей**, и обе видны в файлах:
+
+1. **Семантические ключи** — `difficulty.easy`, `duration.hour`, `sync.status.synced`,
+   `comments.title`, `accessibility.next_step`. Используются для новых экранов и
+   всего, что имеет параметры/форматирование.
+2. **Русский текст как ключ** — `"Начать приготовление" = "...";`. Исторические
+   строки первых этапов остаются читаемыми в коде, а `en.lproj` переопределяет их
+   на английский (`"Рецепты" = "Recipes";`).
+
+Обращение к строкам идёт через `NSLocalizedString(_:value:comment:)`, где
+`value:` задаёт fallback, если ключ не найден в каталоге — приложение никогда не
+покажет «голый» ключ:
+
+```swift
+let h = NSLocalizedString("duration.hour", value: "ч", comment: "")
+```
+
+**Форматируемые строки** используют позиционные спецификаторы и собираются через
+`String(format:)`, что позволяет менять порядок аргументов при переводе:
+
+```swift
+// "accessibility.step_progress" = "Шаг %d из %d";  (RU)
+// "accessibility.step_progress" = "Step %d of %d";  (EN)
+String(format: NSLocalizedString("accessibility.step_progress", …), current, total)
+```
+
+Числовые/временные значения форматируются локале-независимой утилитой
+`Int.formattedDuration` (`Shared/Extensions/Extensions.swift`), которая сама
+подставляет локализованные единицы `duration.hour` / `duration.min`.
+
+**Выбор языка вручную.** В `SettingsView.languageSection` пользователь выбирает
+«Системный / Русский / English»; значение сохраняется в `UserDefaults` под
+ключом `app.language`:
+
+```swift
+Picker("Язык", selection: $appLanguage) {
+    Text("Системный").tag("system")
+    Text("Русский").tag("ru")
+    Text("English").tag("en")
+}
+.onChange(of: appLanguage) { _, new in
+    UserDefaults.standard.set(new, forKey: "app.language")
+}
+```
+
+### Адаптация лейаутов для iPad (landscape + portrait)
+
+iPad-адаптация построена на классе размера, а не на проверке модели устройства —
+это корректно работает и в Split View/Slide Over, и при обеих ориентациях.
+
+**Разная корневая навигация** (`MainTabView.swift`). При `horizontalSizeClass
+== .regular` (iPad) вместо нижнего `TabView` показывается
+`NavigationSplitView` с боковой панелью (`.listStyle(.sidebar)`); на iPhone
+(`.compact`) остаётся привычный таб-бар:
+
+```swift
+@Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+var body: some View {
+    if horizontalSizeClass == .regular { iPadLayout }   // sidebar + detail
+    else                               { phoneLayout }  // TabView
+}
+```
+
+**Адаптивная сетка карточек** (`RecipeListView.swift`). `LazyVGrid` использует
+`GridItem(.adaptive(...))` — число колонок вычисляется системой из доступной
+ширины, поэтому при повороте iPad колонки перекомпоновываются автоматически. На
+iPhone получается 2 колонки, на iPad — 3–4:
+
+```swift
+private var adaptiveColumns: [GridItem] {
+    let minimum: CGFloat = horizontalSizeClass == .regular ? 200 : 155
+    let maximum: CGFloat = horizontalSizeClass == .regular ? 280 : 240
+    return [GridItem(.adaptive(minimum: minimum, maximum: maximum), spacing: 16)]
+}
+```
+
+Так выполняется требование §2.4 («2 колонки на iPhone, 3–4 на iPad») и §4
+(«iPad-ориентация: Landscape + Portrait»).
+
+### Dark Mode
+
+Тёмная тема не требует ручного переключения — приложение опирается на
+динамические цвета системы и asset-каталог с вариантами под тему:
+
+- **Акцентный цвет** (`AccentColor.colorset/Contents.json`) содержит два
+  варианта: `universal` (светлый) и `luminosity=dark`. В тёмной теме оранжевый
+  делается чуть светлее (green `0.478 → 0.584`) для контраста на тёмном фоне.
+  В коде — `Color("AccentColor")` / `Color.kitchenAccent`.
+- **Фоновые и текстовые цвета** используют системные семантические цвета вместо
+  жёстко заданных: `Color(.systemBackground)`, `Color(.secondarySystemBackground)`,
+  `Color(.tertiarySystemBackground)`. Они автоматически инвертируются в Dark Mode.
+- **Материалы** (`.ultraThinMaterial`, `.regularMaterial`) для закреплённых
+  панелей и оверлеев — тоже адаптивны к теме «из коробки».
+
+Поскольку `preferredColorScheme` нигде не форсируется, приложение следует
+системной настройке и корректно выглядит в обоих режимах.
+
+### Accessibility (VoiceOver + Dynamic Type)
+
+**VoiceOver.** Все иконочные кнопки без видимого текста снабжены
+`.accessibilityLabel(...)` с локализованными строками из секции `accessibility.*`.
+Метки контекстно-зависимы (учитывают текущее состояние):
+
+```swift
+// Кнопка hands-free меняет подсказку в зависимости от состояния:
+.accessibilityLabel(NSLocalizedString(
+    handsFreeEnabled ? "accessibility.handsfree_on"
+                     : "accessibility.handsfree_off", comment: ""))
+
+// Кнопка таймера — play/pause:
+.accessibilityLabel(NSLocalizedString(
+    timer.isRunning ? "accessibility.timer_pause"
+                    : "accessibility.timer_play", comment: ""))
+```
+
+Карточка рецепта объединяется в один элемент озвучивания через
+`.accessibilityElement(children: .combine)` + собранный из полей label
+(`accessibility.recipe_card` = `"%@, %@, %@"` — название, время, сложность), а
+чисто декоративные иконки скрываются `.accessibilityHidden(true)`, чтобы
+VoiceOver не читал их отдельно.
+
+**Dynamic Type.** Текст использует семантические стили шрифта (`.font(.caption)`,
+`.headline` и т. п.), которые масштабируются вместе с системным размером шрифта.
+Для многострочных подписей применяется `.fixedSize(horizontal: false, vertical:
+true)`, чтобы текст не обрезался при крупных шрифтах, а описания рецепта —
+`.lineLimit` с возможностью развернуть («Читать далее»).
+
+### App Icon и Launch Screen
+
+- **App Icon** — `AppIcon.appiconset` с единым ассетом `1024×1024`
+  (`"idiom": "universal", "platform": "ios"`). Формат single-size —
+  современный подход iOS 17+, где система сама генерирует нужные размеры.
+- **Launch Screen** — используется SwiftUI-storyboardless launch screen
+  (конфигурируется ключом `UILaunchScreen` в Info.plist Xcode-проекта);
+  отдельный `.storyboard` не требуется для iOS 17+.
+
+### TestFlight-сборка + smoke-test
+
+**Экспорт для TestFlight** описан в `ExportOptions.plist`: `method = app-store`
+(загрузка в App Store Connect / TestFlight), `signingStyle = automatic`,
+`teamID = $(DEVELOPMENT_TEAM)`, `stripSwiftSymbols` и `uploadSymbols` для
+корректных крэш-репортов. Файл подключается к `xcodebuild -exportArchive
+-exportOptionsPlist ExportOptions.plist`.
+
+**Smoke-тесты** (`KitchenAppUITests/`) — XCUITest, проверяющие ключевые сценарии
+без реального бэкенда:
+
+- `KitchenAppSmokeTests.swift` — экран логина и его элементы, включение кнопки
+  при валидном вводе, переход на регистрацию, появление таб-бара, наличие
+  поиска на списке рецептов, открытие фильтр-шторки и редактора.
+- `KitchenAppLaunchTests.swift` — `testLaunchPerformance` (метрика времени
+  запуска).
+
+Тесты, требующие авторизованного состояния, обходят реальный логин через launch
+argument `UI_TESTING_BYPASS_AUTH`. В `KitchenRecipeApp.init()` (только `#if
+DEBUG`) этот флаг перехватывается и в `APIClient` инъектируются тестовые токены:
+
+```swift
+private func injectUITestingState() {
+    guard CommandLine.arguments.contains("UI_TESTING_BYPASS_AUTH") else { return }
+    APIClient.shared.setTokens(access: "ui-test-access-token",
+                               refresh: "ui-test-refresh-token")
+}
+```
+
+### Финальный ревью безопасности
+
+Ревью сведён в отдельный тип `SecurityAudit` (`Core/Security/SecurityAudit.swift`),
+запускаемый на старте (`SecurityAudit.run()` в `KitchenRecipeApp.init()`), и
+закрывает три поверхности из §4:
+
+**1. Keychain (токены).** Access/refresh-токены хранятся как
+`kSecClassGenericPassword` с атрибутом доступности
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (`KeychainService.swift`): токены
+недоступны при заблокированном устройстве, не мигрируют в iCloud Keychain и не
+попадают в резервные копии. Пароли отправляются на сервер только при
+login/register и локально не кэшируются.
+
+**2. HTTPS.** `SecurityAudit.checkServerURLScheme()` логирует предупреждение,
+если сохранённый адрес сервера использует plain HTTP для не-локального хоста.
+UI-дубликат — в `SettingsView`: при вводе небезопасного URL показывается красный
+`Label` с иконкой `lock.open.trianglebadge.exclamationmark.fill` и пояснением,
+что токены и данные пойдут в открытом виде (с `.accessibilityLabel` для
+VoiceOver). Локальные адреса (`localhost`, `127.*`) из проверки исключены.
+
+**3. Приватность камеры.** `checkCameraUsageDescription()` через `assert`
+проверяет наличие `NSCameraUsageDescription` в Info.plist (без ключа доступ к
+камере крэшит на старте). Кадры `AVCaptureSession` потребляются только локально
+`VNDetectHumanHandPoseRequest` (Этап 10) — сырое видео не выгружается и не
+сохраняется, о чём пользователю сообщает пояснение в `SettingsView`.
+
+Итоговая сводка о постуре безопасности зафиксирована в doc-комментарии к
+`enum SecurityAudit` как эталон для будущих ревью.
