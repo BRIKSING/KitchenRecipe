@@ -1412,6 +1412,145 @@ VoiceOver). Локальные адреса (`localhost`, `127.*`) из пров
 
 ---
 
+## MVP — CRUD рецептов со шагами и фотографиями
+
+Сквозная MVP-фича (`SPEC.md` §6 «MVP»): полный жизненный цикл рецепта на клиенте
+— чтение (список и детали), создание со шагами и фотографиями, публикация. В
+отличие от экранных этапов, это **вертикальный срез** через все слои клиента:
+типобезопасные эндпоинты, DTO, сетевой клиент, view-модели чтения и
+редактирования. Низкоуровневые детали каждого слоя описаны в соответствующих
+этапах (сетевой слой и модели — Этап 6, список/детали — Этап 8, редактор —
+Этап 11); этот раздел показывает, **как они складываются в единый CRUD-поток** и
+как форматы запросов согласованы с бэкендом (`SPEC.md` §3.3–3.7).
+
+### Состав фичи
+
+| Операция | Frontend-точка входа | Эндпоинт |
+|---|---|---|
+| Список рецептов (read) | `RecipeViewModel.loadRecipes` | `GET /recipes` |
+| Детали рецепта (read) | `RecipeViewModel.loadDetail` | `GET /recipes/:id` |
+| Загрузка обложки | `EditorViewModel.performPublish` → `APIClient.upload` | `POST /upload/image` |
+| Создание рецепта | `EditorViewModel.performPublish` | `POST /recipes` |
+| Создание шагов | `EditorViewModel.performPublish` (цикл по шагам) | `POST /recipes/:id/steps` |
+| Публикация | `EditorViewModel.performPublish` | `POST /recipes/:id/publish` |
+| DTO запросов/ответов | `RecipeCreateRequest`, `IngredientInput`, `Recipe`, `Step` … | — |
+
+### Модель эндпоинтов: `Endpoint`
+
+Все маршруты CRUD описаны кейсами `enum Endpoint`
+(`KitchenApp/Core/Network/Endpoint.swift`) с ассоциированными значениями:
+`createRecipe`, `updateRecipe`, `deleteRecipe`, `publishRecipe`, семейство
+`steps`/`createStep`/`updateStep`/`deleteStep`/`reorderSteps`, а также
+`uploadStepPhoto`/`deleteStepPhoto`/`reorderStepPhotos` и `uploadImage`.
+`path`, `method` и `queryItems` детерминированно выводятся из кейса, поэтому
+`APIClient` собирает `URLRequest`, не зная деталей конкретного маршрута.
+На момент документирования UI-редактор использует подмножество: `uploadImage`
+(обложка), `createRecipe`, `createStep`, `publishRecipe`; остальные кейсы
+(update/delete, отдельная загрузка фото шага, reorder) объявлены в модели
+эндпоинтов и готовы к использованию.
+
+### DTO запросов и ответов
+
+**Тело создания рецепта — `RecipeCreateRequest`** (`Endpoint.swift`). Поля
+мапятся в snake_case бэкенда через `CodingKeys` (`category_id`, `cook_time_min`,
+`cover_image`, `tag_ids`). Ключевое согласование с сервером:
+
+- `coverImage` (`cover_image`) хранит **S3-ключ**, а не URL: бэкенд
+  `createRecipeSchema` кладёт в это поле именно `key` из ответа `POST /upload/image`;
+- ингредиенты передаются **инлайн** массивом `IngredientInput`
+  (`name`/`amount`/`unit`/`sort_order`), а не отдельными запросами;
+- теги — массивом UUID `tag_ids`.
+
+**Ответы чтения** (`KitchenApp/Shared/Models/Models.swift`) разделены на
+«лёгкую» и «полную» модели: `RecipeListItem` (карточка списка) и `Recipe`
+(полный рецепт с `ingredients` и `steps`). Список приходит в обёртке
+`PaginatedResponse<T>` с вычислимым `hasMore` (`page < pages`). Даты
+(`created_at`/`updated_at`) декодируются автоматически — у `JSONDecoder` в
+`APIClient` выставлен `dateDecodingStrategy = .iso8601`.
+
+### Сетевой слой: чтение и multipart-загрузка
+
+CRUD опирается на два метода `APIClient` (`KitchenApp/Core/Network/APIClient.swift`):
+
+- `request<T: Decodable>(_:body:)` — универсальный JSON-запрос: собирает
+  `URLRequest`, подставляет `Authorization: Bearer` из `KeychainService`,
+  сериализует `Encodable`-тело, декодирует ответ и обрабатывает `401`
+  (однократный refresh + повтор) и `noConnection` (retry с экспоненциальной
+  задержкой);
+- `upload(imageData:mimeType:to:)` — `multipart/form-data` (поле `file`) для
+  `POST /upload/image`, возвращает `UploadResponse { url, key }`.
+
+### Чтение: `RecipeViewModel`
+
+`RecipeViewModel` (`@MainActor`, `ObservableObject`) обслуживает read-часть:
+
+- `loadRecipes(query:reset:)` — постраничная загрузка списка с защитой от гонок
+  (`guard !isLoading`), накоплением `recipes += items` и обновлением `hasMore`;
+  флаг `reset` сбрасывает пагинацию для pull-to-refresh и смены фильтров;
+- `loadDetail(id:)` — полный рецепт для `RecipeDetailView`/сессии готовки;
+- `loadCategories()` / `loadTags()` — справочники для фильтров.
+
+Ошибки чтения списка одновременно кладутся в `error` (для inline-состояния
+экрана) и прокидываются в глобальный `ErrorBannerState.shared`.
+
+### Создание и публикация: `EditorViewModel.performPublish`
+
+Ядро write-части — `performPublish(context:)`
+(`KitchenApp/Features/Editor/EditorViewModel.swift`), последовательный конвейер
+из четырёх шагов:
+
+1. **Загрузка обложки.** Если выбрана картинка — сжимается в JPEG и грузится
+   через `api.upload(...)`; сохраняется `upload.key` (именно ключ, не URL — см.
+   `cover_image` выше).
+2. **Создание рецепта.** Ингредиенты фильтруются (пустые имена отбрасываются) и
+   мапятся в `IngredientInput`; рецепт создаётся `POST /recipes`, из ответа
+   берётся `id`.
+3. **Создание шагов.** Цикл по непустым шагам, каждый — `POST /recipes/:id/steps`.
+4. **Публикация.** `POST /recipes/:id/publish`, затем удаление черновика
+   (`deleteDraft`) и `isPublished = true` (экран закрывается).
+
+**Согласование с Zod-схемами бэкенда** (иначе публикация прерывается на 400):
+
+- `ingredientInputSchema.amount` — только `.positive()`: `0`/пустое/нечисловое
+  значение отправляется как `null`;
+- `createStepSchema.timer_sec` — только `.positive()`: включённый таймер на
+  `00:00` даёт `0` и трактуется как отсутствие таймера (`nil`);
+- `createStepSchema.description` — `min 1`: пустое описание шага заменяется его
+  заголовком (форма валидирует только заголовок шага).
+
+Любая ошибка конвейера показывается через `ErrorBannerState.shared`.
+
+### UI редактора: авторинг шагов и фотографий
+
+`RecipeEditorView` (`KitchenApp/Features/Editor/RecipeEditorView.swift`) — форма
+основной информации, обложки, тегов, а также списков ингредиентов и шагов с
+`onDelete`/`onMove` (swipe-to-delete и drag-to-reorder). Каждый шаг раскрывается
+в `StepEditorView` (`StepEditorView.swift`): заголовок, описание,
+**до 5 фотографий** (`PhotosPicker` с `maxSelectionCount: 5 - photos.count`,
+превью с кнопкой удаления) и таймер (`minutes:seconds` через `wheel`-пикеры).
+Фотографии шага удерживаются в `DraftStep.photos` (в памяти/черновике SwiftData);
+отдельная выгрузка фото шага на сервер (`uploadStepPhoto`) в текущем потоке
+публикации не выполняется — при создании шага передаются его текст и таймер.
+
+### Как слои связаны
+
+```
+RecipeEditorView / StepEditorView   (ввод: поля, ингредиенты, шаги, фото)
+        │  @Published draft-модели
+        ▼
+EditorViewModel.performPublish       (конвейер: upload → create → steps → publish)
+        │  RecipeCreateRequest / IngredientInput / StepBody
+        ▼
+APIClient.request / .upload          (URLRequest, JWT, retry, refresh, декодирование)
+        │  Endpoint (path/method/query)
+        ▼
+        Бэкенд  ──►  GET /recipes(:id)  ──►  PaginatedResponse<RecipeListItem> / Recipe
+        ▲                                             │
+        └──────────────  RecipeViewModel  ◄───────────┘   (чтение: список, детали)
+```
+
+---
+
 ## После MVP — Голосовые команды (Speech framework)
 
 Голосовое управление сессией приготовления через Apple **Speech Framework**
