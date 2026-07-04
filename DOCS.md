@@ -1409,3 +1409,144 @@ VoiceOver). Локальные адреса (`localhost`, `127.*`) из пров
 
 Итоговая сводка о постуре безопасности зафиксирована в doc-комментарии к
 `enum SecurityAudit` как эталон для будущих ревью.
+
+---
+
+## После MVP — Голосовые команды (Speech framework)
+
+Голосовое управление сессией приготовления через Apple **Speech Framework**
+(`SPEC.md` §6 «После MVP»). Расширяет Hands-Free режим (Этап 10): пользователь
+листает шаги, ставит таймер на паузу и завершает готовку короткими голосовыми
+командами, не касаясь экрана и не показывая руки камере. Как и жесты, слой
+полностью **клиентский** — аудио обрабатывается локально через Apple Speech
+Recognition и **не** передаётся на серверы приложения; бэкенд-эндпоинтов для
+голоса нет.
+
+### Состав этапа
+
+| Подзадача | Где реализовано |
+|---|---|
+| Каталог команд (иконки, названия) | `enum VoiceCommand` в `KitchenApp/Core/Speech/VoiceCommandService.swift` |
+| Распознавание речи и матчинг команд | `VoiceCommandService` там же |
+| Запрос разрешения на распознавание речи | `VoiceCommandService.requestPermissions()`, `SettingsView.speechPermissionRow`, `CookingSessionView.startVoiceCommands()` |
+| Оверлей активного микрофона и команды | `KitchenApp/Features/Cooking/VoiceCommandOverlayView.swift` |
+| Задержка между командами 1.5 сек | `commandCooldown` в `VoiceCommandService.swift` |
+| Тумблер «включать по умолчанию» + справочник команд | `voiceCommandsSection` / `VoiceCommandsHelpView` в `KitchenApp/Features/Settings/SettingsView.swift` |
+| Автоотключение при сворачивании приложения | `onChange(of: scenePhase)` в `CookingSessionView.swift` |
+| Требуемые ключи Info.plist | `NSSpeechRecognitionUsageDescription`, `NSMicrophoneUsageDescription` (комментарий в `VoiceCommandService.swift`) |
+
+Точка интеграции — `CookingSessionView` (Этап 9): она создаёт сервис,
+накладывает оверлей, мапит команды на навигацию/таймер и управляет жизненным
+циклом распознавания параллельно с Hands-Free жестами.
+
+### Каталог команд: `VoiceCommand`
+
+`VoiceCommand` — `enum` из четырёх действий; каждое несёт локализованное
+название (`displayName`) и SF-иконку (`iconName`) для карточки оверлея:
+
+| Кейс | Действие в сессии | Иконка |
+|---|---|---|
+| `nextStep` | следующий шаг (`navigateNext`) | `chevron.right.circle.fill` |
+| `prevStep` | предыдущий шаг (`navigatePrev`) | `chevron.left.circle.fill` |
+| `toggleTimer` | пауза/запуск таймера (`timer.toggle`) | `timer` |
+| `stopCooking` | завершить приготовление (`dismiss`) | `xmark.circle.fill` |
+
+Маппинг «команда → действие» задаётся в `CookingSessionView.wireVoiceCommands()`
+и согласован с навигацией Этапа 9 и жестами Этапа 10 (те же операции).
+
+### Сервис распознавания: `VoiceCommandService`
+
+`VoiceCommandService` (`@MainActor`, `ObservableObject`) инкапсулирует
+`SFSpeechRecognizer`, `AVAudioEngine` и логику матчинга команд. Публикует три
+поля для UI:
+
+- `isListening: Bool` — активен ли аудио-движок;
+- `lastCommand: VoiceCommand?` — последняя распознанная команда (для оверлея;
+  сам себя гасит через ~1.8 с);
+- `speechAuthStatus: SFSpeechRecognizerAuthorizationStatus` — статус разрешения
+  на распознавание речи.
+
+Внешняя точка выхода — замыкание `onCommand: ((VoiceCommand) -> Void)?`, которое
+`CookingSessionView` привязывает к навигации и таймеру.
+
+**Локаль.** В `init` распознаватель создаётся для `ru-RU`, а если русская модель
+недоступна — fallback на `en-US`. Соответственно основной словарь команд —
+русский, с английскими дублями.
+
+**Разрешения.** `requestPermissions()` оборачивает
+`SFSpeechRecognizer.requestAuthorization` в `withCheckedContinuation` (async/await)
+и публикует итоговый `speechAuthStatus` на главном потоке. Для работы также
+требуются ключи Info.plist `NSSpeechRecognitionUsageDescription` и
+`NSMicrophoneUsageDescription` (перечислены в шапке файла).
+
+**Жизненный цикл сессии.** `start()` (только при `.authorized`) поднимает флаг
+`shouldRestart` и вызывает `beginSession()`; `stop()` сбрасывает флаг, отменяет
+задачу перезапуска и `endSession()`. В `beginSession()`:
+
+- настраивается `AVAudioSession` в режиме `.playAndRecord` / `.measurement` с
+  опциями `.duckOthers` (приглушить фоновый звук) и `.defaultToSpeaker`;
+- создаётся `SFSpeechAudioBufferRecognitionRequest`
+  (`shouldReportPartialResults = true`, `taskHint = .dictation`) — команды
+  ловятся по частичным результатам, не дожидаясь финала фразы;
+- на `inputNode` ставится tap (`installTap`, buffer 1024), буферы дописываются в
+  запрос; флаг `tapInstalled` гарантирует корректное снятие tap в `endSession()`.
+
+Речь непрерывна, поэтому после `isFinal`/ошибки при живом `shouldRestart`
+вызывается `scheduleRestart()` — перезапуск сессии через 400 мс (с проверкой
+`Task.isCancelled`), чтобы прослушивание не «умирало» после первой фразы.
+`endSession()` идемпотентно останавливает движок, снимает tap и обнуляет
+запрос/задачу распознавания.
+
+**Матчинг команд.** Ключевые слова хранятся в таблице `keywords`
+(`[(keywords:, command:)]`). В `matchCommand(in:)` транскрипт приводится к
+нижнему регистру, и при `text.contains` любого из ключевых слов вызывается
+соответствующая команда. Дребезг подавляется `commandCooldown = 1.5 с` (те же
+1.5 с, что у жестов Этапа 10): срабатывания чаще игнорируются. При совпадении
+обновляется `lastCommand` (для оверлея) и вызывается `onCommand`; через ~1.8 с
+`lastCommand` очищается, если новая команда не пришла.
+
+### Оверлей: `VoiceCommandOverlayView`
+
+`VoiceCommandOverlayView` — прозрачный оверлей поверх `CookingSessionView`,
+размещённый **сверху** (`padding(.top, 64)` — ниже прогресс-бара и хедера),
+чтобы не перекрывать нижний `HandsFreeOverlayView`. Полностью пассивен
+(`allowsHitTesting(false)`) — не перехватывает свайпы сессии. Состоит из двух
+частей:
+
+- **`micBadge`** — капсула «Голос активен» с пульсирующим кругом (анимация
+  `micPulse`, `repeatForever`), показывается пока `isActive == true`;
+- **`commandCard`** — карточка с иконкой и названием последней команды, появляется
+  через `.scale + .opacity`-переход и `spring`-анимацию при смене `command`.
+
+### Интеграция в `CookingSessionView`
+
+`CookingSessionView` владеет `@StateObject voiceService` и локальным состоянием
+`voiceEnabled` / `showVoicePermissionAlert`:
+
+- в `onAppear` вызывается `wireVoiceCommands()`; если в настройках включён
+  `voice.enabledByDefault` (`UserDefaults`) — сразу `startVoiceCommands()`;
+- тумблер в тулбаре («Голос» / «Голос: вкл», иконки `mic` / `mic.fill`)
+  переключает `voiceEnabled`; `onChange(of: voiceEnabled)` стартует/останавливает
+  сервис;
+- `startVoiceCommands()` при `.notDetermined` запрашивает разрешение, затем: при
+  `.authorized` — `start()`; при `.denied/.restricted` — показывает алерт «Нет
+  доступа к микрофону» с кнопкой перехода в системные настройки;
+- `onChange(of: scenePhase)` при уходе приложения из `.active` останавливает
+  распознавание и сбрасывает `voiceEnabled` (симметрично Hands-Free).
+
+Голосовые команды работают **независимо** от жестов — можно включить оба режима
+одновременно; оба вызывают одни и те же операции навигации/таймера.
+
+### Настройки: секция голосовых команд
+
+В `SettingsView` секция `voiceCommandsSection` содержит:
+
+- **`speechPermissionRow`** — статус распознавания речи: «Разрешено», кнопка
+  «Открыть настройки» (при отказе) или «Запросить» (при `.notDetermined`,
+  вызывает `SFSpeechRecognizer.requestAuthorization`);
+- **тумблер «Включать по умолчанию»** — пишет флаг `voice.enabledByDefault` в
+  `UserDefaults` (его читает `CookingSessionView` при старте сессии);
+- **`VoiceCommandsHelpView`** — справочник фраз (напр. «Следующий» / «Вперёд»,
+  «Пауза» / «Останови», «Выйти») с описанием действий и советами;
+- **footer** — пояснение приватности: голос обрабатывается локально, аудио не
+  уходит на серверы приложения.

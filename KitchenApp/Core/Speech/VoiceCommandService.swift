@@ -37,6 +37,22 @@ enum VoiceCommand: Equatable {
 
 // MARK: - VoiceCommandService
 
+/// Голосовое управление сессией приготовления через Apple Speech Framework
+/// (`SFSpeechRecognizer`) + `AVAudioEngine` (SPEC.md §6 «После MVP»).
+///
+/// Дополняет Hands-Free жесты (Этап 10): распознаёт короткие русские (и англ.
+/// как fallback) команды и вызывает `onCommand` для навигации по шагам и
+/// управления таймером. Работает **локально** — аудио не покидает устройство,
+/// обрабатывается только Apple Speech API.
+///
+/// Публикуемые поля: `isListening` (активность движка), `lastCommand`
+/// (последняя команда для оверлея, гасит себя через ~1.8 с), `speechAuthStatus`
+/// (статус разрешения на распознавание речи).
+///
+/// Жизненный цикл: `start()` держит `shouldRestart = true` и перезапускает
+/// сессию распознавания (`scheduleRestart`) после каждого финального результата,
+/// пока не вызван `stop()`. Между срабатываниями команд выдерживается
+/// `commandCooldown = 1.5 с` (защита от повторов), совпадающая с задержкой жестов.
 @MainActor
 final class VoiceCommandService: ObservableObject {
     @Published private(set) var isListening = false

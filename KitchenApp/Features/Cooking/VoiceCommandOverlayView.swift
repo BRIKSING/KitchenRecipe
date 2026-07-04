@@ -2,6 +2,11 @@ import SwiftUI
 
 // Floating overlay shown over CookingSessionView when voice commands are active.
 // Positioned near the top so it does not overlap HandsFreeOverlayView at the bottom.
+//
+// Документация: DOCS.md → «После MVP — Голосовые команды (Speech framework)».
+// Показывает пульсирующий бейдж «Голос активен» (isActive) и карточку последней
+// распознанной команды (command) с иконкой/названием из VoiceCommand. Оверлей
+// пассивный — allowsHitTesting(false), не перехватывает жесты сессии.
 struct VoiceCommandOverlayView: View {
     let command: VoiceCommand?
     let isActive: Bool
