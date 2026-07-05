@@ -1551,6 +1551,129 @@ APIClient.request / .upload          (URLRequest, JWT, retry, refresh, деко�
 
 ---
 
+## MVP — Авторизация
+
+Сквозная MVP-фича (`SPEC.md` §6 «MVP»): вход, регистрация и выход, а также
+прозрачное поддержание сессии на клиенте. Как и CRUD, это **вертикальный срез**
+через все слои: экраны входа/регистрации, единая вью-модель состояния,
+безопасное хранилище токенов, автоматическое обновление access-токена в сетевом
+клиенте и защищённый роутинг корневого `App`. Низкоуровневые детали слоёв
+описаны в Этапе 7; этот раздел показывает, **как они складываются в единый
+поток авторизации** и как формат запросов/заголовков согласован с бэкендом
+(`SPEC.md` §2.10, §3.4 «Аутентификация»).
+
+### Состав фичи
+
+| Операция | Frontend-точка входа | Эндпоинт |
+|---|---|---|
+| Вход | `AuthViewModel.login(email:password:)` | `POST /auth/login` |
+| Регистрация | `AuthViewModel.register(email:username:password:)` | `POST /auth/register` |
+| Выход | `AuthViewModel.logout()` → `APIClient.logout()` | `POST /auth/logout` |
+| Обновление access-токена | `APIClient.refreshAccessToken()` (авто, при `401`) | `POST /auth/refresh` |
+| Хранение токенов | `KeychainService.accessToken` / `refreshToken` | — |
+| Защищённый роутинг | `KitchenRecipeApp.body` (`if authViewModel.isAuthenticated`) | — |
+| DTO запросов/ответов | `LoginRequest`, `RegisterRequest`, `AuthTokens` | — |
+
+### Вью-модель: `AuthViewModel`
+
+`AuthViewModel` (`@MainActor`, `ObservableObject`,
+`KitchenApp/Features/Auth/AuthViewModel.swift`) — единый источник состояния
+авторизации. Создаётся один раз в корне как `@StateObject` и прокидывается через
+`environmentObject`, поэтому любой экран может прочитать `isAuthenticated`,
+`isLoading`, `userEmail`, `userUsername`.
+
+- `login` / `register` — собирают `LoginRequest` / `RegisterRequest`, вызывают
+  `APIClient.request`, при успехе сохраняют пару токенов (`api.setTokens`) и
+  поднимают `isAuthenticated = true`. Флаг `isLoading` (через `defer`) блокирует
+  кнопки и показывает `ProgressView`;
+- `logout` — асинхронно вызывает `api.logout()` (ревокация refresh-токена на
+  сервере), очищает Keychain (`clearTokens`) и локальные данные профиля, опускает
+  `isAuthenticated`.
+
+**Разделение секретов и профиля.** Токены живут **только** в Keychain;
+неконфиденциальные email/username кэшируются в `UserDefaults` (ключи
+`user.email` / `user.username`) для показа в `SettingsView` без сетевого запроса.
+Ошибки login/register наружу не пробрасываются, а показываются глобальным
+`ErrorBannerState.shared` (Этап 6).
+
+### Экраны входа и регистрации
+
+`LoginView` (`KitchenApp/Features/Auth/LoginView.swift`) — стартовый экран
+неавторизованного пользователя: поля email/пароль, кнопка «Войти» с индикатором
+загрузки и блокировкой при пустых полях, переход на `RegisterView` через
+`navigationDestination`.
+
+`RegisterView` (`KitchenApp/Features/Auth/RegisterView.swift`) — форма email /
+имя пользователя / пароль + подтверждение. Локальная валидация `isValid`
+**повторяет Zod-схему бэкенда** (`registerBodySchema`), чтобы не слать заведомо
+отклоняемый запрос: `username` — 3–50 символов из латиницы/цифр/`_`, `password` —
+8–100 символов, и `password == confirm`. Оба экрана читают `AuthViewModel` из
+окружения и вызывают его методы — сами по себе состояния авторизации не держат.
+
+### Хранение токенов: `KeychainService`
+
+`KeychainService` (`KitchenApp/Core/Network/KeychainService.swift`) — stateless
+`enum` поверх системного Keychain. Access- и refresh-токены сохраняются как
+`kSecClassGenericPassword` с атрибутом
+`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`: недоступны на заблокированном
+устройстве и **не** мигрируют в iCloud Keychain или зашифрованные бэкапы.
+Типобезопасные аксессоры `accessToken` / `refreshToken` (get/set, `nil` →
+удаление записи) скрывают низкоуровневые `SecItem*`-вызовы; `clearAll()` стирает
+обе записи при выходе. `APIClient.isAuthenticated` вычисляется как «в Keychain
+есть access-токен», и именно это значение читает `AuthViewModel` при старте
+(`init`) — сессия восстанавливается между запусками без повторного логина.
+
+### Interceptor: автообновление access-токена
+
+Refresh-flow встроен в `APIClient.execute(_:endpoint:retries:)`
+(`KitchenApp/Core/Network/APIClient.swift`) и прозрачен для вызывающего кода:
+
+1. запрос выполняется с `Authorization: Bearer <access>` из Keychain;
+2. при `NetworkError.unauthorized` (`401`) **один раз** вызывается
+   `refreshAccessToken()`;
+3. `refreshAccessToken()` шлёт `POST /auth/refresh`, передавая **refresh-токен в
+   заголовке** `Authorization: Bearer` (не в теле — так ожидает бэкенд),
+   декодирует `{ access_token }`, сохраняет новый access-токен в Keychain и
+   возвращает его;
+4. исходный запрос повторяется с обновлённым заголовком. Если refresh не удался
+   (нет refresh-токена или сервер вернул `401`) — пробрасывается
+   `NetworkError.unauthorized`.
+
+`logout()` реализован отдельно, потому что ревокирует именно **refresh**-токен и
+ожидает его в `Authorization: Bearer` (а не access-токен, который подставляет
+общий `request`); ответ — `204 No Content`, поэтому тело не декодируется, а
+сетевые ошибки игнорируются (локальные токены всё равно очищаются вызывающей
+стороной).
+
+### Защищённый роутинг
+
+Корневой `KitchenRecipeApp.body` (`KitchenApp/KitchenRecipeApp.swift`) выбирает
+стартовый экран по `authViewModel.isAuthenticated`: пока токенов нет — `LoginView`,
+иначе — `MainTabView`. Поскольку `isAuthenticated` — `@Published`, любое его
+изменение (успешный login/register или logout) заставляет SwiftUI пересобрать
+`Group` и переключить экран без ручной навигации. В DEBUG-сборках XCUITests
+обходят реальный логин через launch-аргумент `UI_TESTING_BYPASS_AUTH`, который
+кладёт в Keychain плейсхолдер-токены (`injectUITestingState`).
+
+### Как слои связаны
+
+```
+LoginView / RegisterView            (ввод: email, username, пароль)
+        │  вызывает методы из окружения
+        ▼
+AuthViewModel.login / register / logout   (@Published isAuthenticated / isLoading)
+        │  LoginRequest / RegisterRequest / AuthTokens
+        ▼
+APIClient.request / .logout         (URLRequest, JWT, 401→refresh, retry)
+        │  setTokens / clearTokens          ▲
+        ▼                                    │ Authorization: Bearer
+KeychainService  (access + refresh, device-only)
+        ▲
+        │ isAuthenticated читает App.body → LoginView ↔ MainTabView
+```
+
+---
+
 ## После MVP — Голосовые команды (Speech framework)
 
 Голосовое управление сессией приготовления через Apple **Speech Framework**

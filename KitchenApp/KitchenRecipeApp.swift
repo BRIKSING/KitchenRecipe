@@ -18,6 +18,10 @@ struct KitchenRecipeApp: App {
 
     var body: some Scene {
         WindowGroup {
+            // Защищённый роутинг: корневой экран выбирается по флагу
+            // AuthViewModel.isAuthenticated. Пока токенов в Keychain нет — показываем
+            // LoginView; после успешного login/register (или наличия токена при
+            // запуске) SwiftUI пересобирает Group и подменяет его на MainTabView.
             Group {
                 if authViewModel.isAuthenticated {
                     MainTabView()
