@@ -1674,6 +1674,188 @@ KeychainService  (access + refresh, device-only)
 
 ---
 
+## MVP — Hands-free жесты (следующий/предыдущий шаг)
+
+Сквозная документация ключевой MVP-фичи: управление пошаговым режимом
+приготовления **жестами руки перед фронтальной камерой** без касания экрана
+(`SPEC.md` §2.7, §6 «MVP»). Фокус этого раздела — цепочка от кадра камеры до
+перелистывания шага: как открытая ладонь со свайпом вправо/влево превращается в
+переход «следующий шаг» / «предыдущий шаг». Реализация опирается на **Vision
+Framework** (`VNDetectHumanHandPoseRequest`) и не отправляет видеопоток на
+сервер — вся обработка локальная.
+
+### Состав фичи
+
+| Пункт `SPEC.md` (MVP) | Где реализовано |
+|---|---|
+| Открытая ладонь → свайп вправо → следующий шаг | `HandGestureDetector.detectSwipe` → `.swipeNext` → `CookingSessionView.navigateNext()` |
+| Открытая ладонь → свайп влево → предыдущий шаг | `HandGestureDetector.detectSwipe` → `.swipePrev` → `CookingSessionView.navigatePrev()` |
+| Локальная обработка кадров без сети | `HandGestureDetector` (AVFoundation + Vision, `processingQueue`) |
+| Визуальная индикация распознанного жеста | `HandsFreeOverlayView` (иконка + название + confidence-бар) |
+| Защита от случайных срабатываний | cooldown 1.5 с в `HandGestureDetector` |
+
+**Затрагиваемые файлы фронтенда:**
+
+- `KitchenApp/Core/Vision/GestureType.swift` — каталог жестов;
+- `KitchenApp/Core/Vision/HandGestureDetector.swift` — захват камеры, Vision,
+  логика распознавания свайпа;
+- `KitchenApp/Features/Cooking/HandsFreeOverlayView.swift` — прозрачный оверлей;
+- `KitchenApp/Features/Cooking/CookingSessionView.swift` — интеграция жестов с
+  навигацией по шагам.
+
+> Полная документация детектора, всех четырёх жестов, оверлея, настроек
+> чувствительности и жизненного цикла — в разделе **«Этап 10 — iOS: Hands-Free
+> режим»** выше. Здесь описан именно навигационный контур свайп → шаг.
+
+### Каталог навигационных жестов: `GestureType`
+
+`GestureType` — `enum: Equatable`, из четырёх кейсов за перелистывание шага
+отвечают два:
+
+- **`.swipeNext`** — открытая ладонь, движение вправо → следующий шаг;
+  `displayName` = «Следующий шаг», `iconName` = `hand.point.right.fill`;
+- **`.swipePrev`** — открытая ладонь, движение влево → предыдущий шаг;
+  `displayName` = «Предыдущий шаг», `iconName` = `hand.point.left.fill`.
+
+`displayName` и `iconName` использует `HandsFreeOverlayView` для отрисовки
+карточки распознанного жеста. Остальные два кейса (`.fistHold`, `.victory`)
+управляют таймером и подтверждением и в навигации не участвуют.
+
+### Распознавание свайпа: `HandGestureDetector.detectSwipe`
+
+Детектор захватывает кадры с фронтальной камеры (`AVCaptureSession`,
+`sessionPreset = .medium`, `position: .front`) и на фоновой очереди
+`processingQueue` (`qos: .userInteractive`) прогоняет каждый кадр через
+`VNDetectHumanHandPoseRequest` с `maximumHandCount = 1`. Обработчик создаётся с
+ориентацией `.leftMirrored` — компенсирует зеркальность фронтальной камеры.
+
+Из наблюдения `VNHumanHandPoseObservation` навигационный жест выделяется в два
+шага:
+
+1. **Проверка открытой ладони — `isPalmOpen`.** Свайп засчитывается только если
+   рука раскрыта. Для четырёх пальцев (index/middle/ring/little) сравнивается
+   `tip.location.y` с `mcp.location.y`: палец считается разогнутым, если кончик
+   выше сустава на `> 0.03` (в координатах Vision `y` растёт вверх) и
+   `confidence` обеих точек `> 0.3`. Ладонь открыта при `>= 3` разогнутых
+   пальцах.
+
+2. **Дельта запястья между кадрами — `detectSwipe`.** Берётся точка `.wrist`
+   (только при `confidence > 0.4`), сравнивается её `x` с положением в
+   предыдущем кадре (`previousWristPosition`). По знаку `deltaX` определяется
+   направление:
+
+   ```swift
+   let deltaX = wristPos.x - prev.x
+   // Фронтальная камера зеркалит: свайп вправо → wrist.x уменьшается
+   if deltaX < -swipeSensitivity {
+       return .swipeNext
+   } else if deltaX > swipeSensitivity {
+       return .swipePrev
+   }
+   ```
+
+   Порог `swipeSensitivity` (минимальная дельта `Δx`, диапазон 0.02–0.10)
+   настраивается пользователем в `SettingsView` и читается из `UserDefaults`
+   (ключ `handsfree.swipeSensitivity`, дефолт `0.04`). Положение запястья
+   складывается в кольцевой буфер `wristBuffer` (размер 5) и в
+   `previousWristPosition` через `defer` — то есть обновляется на каждом кадре
+   независимо от результата.
+
+При потере руки в кадре (`observation == nil`) состояние сбрасывается
+(`previousWristPosition = nil`, `wristBuffer = []`), чтобы «прыжок» позиции при
+повторном появлении руки не был ошибочно принят за свайп.
+
+### Защита от ложных срабатываний: cooldown 1.5 с
+
+Между двумя зарегистрированными жестами выдерживается пауза
+`cooldown = 1.5` с (`lastGestureTime`). Пока не прошло 1.5 с с последнего
+жеста, `processObservation` возвращается рано и новых свайпов не выдаёт —
+пользователь не пролистает несколько шагов одним взмахом. После успешного
+распознавания буферы (`wristBuffer`, `previousWristPosition`) очищаются, и
+`detectedGesture` через 1.5 с автоматически гасится (для скрытия оверлея), если
+за это время не пришёл другой жест.
+
+### Доставка жеста в навигацию: колбэк `onGesture`
+
+Распознанный жест публикуется на главном потоке двумя каналами:
+
+- `@Published detectedGesture` — для оверлея (реактивно обновляет UI);
+- `onGesture?(gesture)` — императивный колбэк, который `CookingSessionView`
+  использует для действия.
+
+Дополнительно `@Published detectionConfidence` (confidence точки запястья)
+питает индикатор уверенности в оверлее.
+
+### Интеграция навигации в `CookingSessionView`
+
+`CookingSessionView` владеет `@StateObject gestureDetector = HandGestureDetector()`
+и состоянием `handsFreeEnabled`. В `onAppear` вызывается `wireGestureDetector()`,
+где колбэк маршрутизирует жесты в операции экрана:
+
+```swift
+gestureDetector.onGesture = { [self] gesture in
+    switch gesture {
+    case .swipeNext: navigateNext()   // → следующий шаг / экран «Готово!»
+    case .swipePrev: navigatePrev()   // → предыдущий шаг
+    case .fistHold:  timer.toggle()
+    case .victory:   UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+}
+```
+
+Навигация — те же методы, что и для кнопок/свайп-жеста пальцем по экрану, то
+есть жесты руки и ручное управление полностью эквивалентны:
+
+- **`navigateNext()`** — если текущий шаг последний, показывает экран завершения
+  (`showCompletion = true`), иначе `currentStepIndex += 1` с анимацией;
+- **`navigatePrev()`** — уменьшает `currentStepIndex` (с защитой `guard
+  currentStepIndex > 0`).
+
+Смена `currentStepIndex` через `onChange` сохраняет/восстанавливает состояние
+таймера соответствующего шага. Оверлей подключён параллельно:
+
+```swift
+HandsFreeOverlayView(
+    gesture: gestureDetector.detectedGesture,
+    confidence: gestureDetector.detectionConfidence,
+    isActive: handsFreeEnabled
+)
+```
+
+**Жизненный цикл распознавания:**
+
+- тумблер «Hands-free: ON/OFF» в тулбаре переключает `handsFreeEnabled`;
+  `onChange(of: handsFreeEnabled)` вызывает `startHandsFree()` или
+  `gestureDetector.stop()`;
+- `startHandsFree()` проверяет `AVCaptureDevice.authorizationStatus`: при
+  `.authorized`/`.notDetermined` — `gestureDetector.start()` (сам запросит
+  доступ к камере), при `.denied/.restricted` — сбрасывает тумблер и показывает
+  алерт о разрешении;
+- если в настройках включён флаг `handsfree.enabledByDefault` (`UserDefaults`),
+  режим включается автоматически при старте сессии;
+- `onChange(of: scenePhase)` при уходе приложения из `.active` останавливает
+  детектор и выключает `handsFreeEnabled` — камера не работает в фоне.
+
+### Как слои связаны
+
+```
+Кадр камеры (AVCaptureSession, front)
+        │  processingQueue (фон)
+        ▼
+VNDetectHumanHandPoseRequest → VNHumanHandPoseObservation
+        │  isPalmOpen? + detectSwipe(Δx запястья vs swipeSensitivity)
+        ▼
+GestureType.swipeNext / .swipePrev      ── cooldown 1.5 с ──┐
+        │  @Published detectedGesture ─────► HandsFreeOverlayView (иконка+название)
+        │  onGesture(gesture)  [главный поток]
+        ▼
+CookingSessionView.navigateNext() / navigatePrev()
+        ▼
+currentStepIndex ± 1  →  перелистывание шага / экран «Готово!»
+```
+
+---
+
 ## После MVP — Голосовые команды (Speech framework)
 
 Голосовое управление сессией приготовления через Apple **Speech Framework**
