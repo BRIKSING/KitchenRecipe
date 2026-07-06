@@ -1812,3 +1812,154 @@ Recognition и **не** передаётся на серверы приложе�
   «Пауза» / «Останови», «Выйти») с описанием действий и советами;
 - **footer** — пояснение приватности: голос обрабатывается локально, аудио не
   уходит на серверы приложения.
+
+## MVP — Hands-free жесты (следующий/предыдущий шаг)
+
+Управление сессией приготовления жестами рук перед камерой (SPEC.md §2.7, §6
+«MVP»). Ключевой пользовательский сценарий MVP: во время готовки руки заняты или
+грязные — пользователь листает шаги **открытой ладонью** (свайп вправо/влево), не
+касаясь экрана. Слой полностью **клиентский**: видеопоток анализируется на
+устройстве через Vision Framework и **не** передаётся на сервер (в бэкенде нет
+gesture/camera/vision-эндпоинтов). Стек тот же, что у Этапа 10, но здесь фича
+описана со стороны своей главной функции — навигации по шагам.
+
+### Состав фичи
+
+| Подзадача | Где реализовано |
+|---|---|
+| Каталог жестов (иконки, названия) | `enum GestureType` в `KitchenApp/Core/Vision/GestureType.swift` |
+| Захват камеры и распознавание позы руки | `HandGestureDetector` в `KitchenApp/Core/Vision/HandGestureDetector.swift` |
+| Определение свайпа «следующий/предыдущий шаг» | `detectSwipe(from:)` в `HandGestureDetector.swift` |
+| Маппинг «жест → навигация/таймер» | `CookingSessionView.wireGestureDetector()` |
+| Запрос разрешения камеры + тумблер режима | `CookingSessionView.startHandsFree()`, тулбар/нижний тумблер |
+| Оверлей распознанного жеста + confidence | `KitchenApp/Features/Cooking/HandsFreeOverlayView.swift` |
+| Задержка между срабатываниями 1.5 сек | `cooldown` в `HandGestureDetector.swift` |
+| Автоотключение при сворачивании приложения | `onChange(of: scenePhase)` в `CookingSessionView.swift` |
+| Чувствительность свайпа и удержание кулака | `handsFreeSection` в `KitchenApp/Features/Settings/SettingsView.swift` |
+| Требуемый ключ Info.plist | `NSCameraUsageDescription` (комментарий в `HandGestureDetector.swift`) |
+
+Точка интеграции — `CookingSessionView` (Этап 9): она владеет детектором,
+накладывает оверлей, мапит жесты на навигацию/таймер и управляет жизненным
+циклом камеры параллельно с голосовыми командами.
+
+### Каталог жестов: `GestureType`
+
+`GestureType` — `enum` из четырёх жестов; каждый несёт локализованное название
+(`displayName`) и SF-иконку (`iconName`) для карточки оверлея:
+
+| Кейс | Жест | Действие в сессии | Иконка |
+|---|---|---|---|
+| `swipeNext` | открытая ладонь вправо | следующий шаг (`navigateNext`) | `hand.point.right.fill` |
+| `swipePrev` | открытая ладонь влево | предыдущий шаг (`navigatePrev`) | `hand.point.left.fill` |
+| `fistHold` | сжатый кулак (удержание) | пауза/запуск таймера (`timer.toggle`) | `hand.raised.fill` |
+| `victory` | два пальца V | подтверждение (тактильный отклик) | `hand.raised.fingers.spread.fill` |
+
+Маппинг «жест → действие» задаётся в `CookingSessionView.wireGestureDetector()`
+и согласован с навигацией Этапа 9 (те же операции `navigateNext`/`navigatePrev`).
+
+### Детектор: `HandGestureDetector`
+
+`HandGestureDetector` (`NSObject`, `ObservableObject`) инкапсулирует
+`AVCaptureSession`, `VNDetectHumanHandPoseRequest` и логику распознавания.
+Публикует три поля для UI:
+
+- `detectedGesture: GestureType?` — последний распознанный жест (для оверлея;
+  сам себя гасит через 1.5 с);
+- `isRunning: Bool` — активна ли камера;
+- `detectionConfidence: Float` — уверенность распознавания по точке запястья
+  (питает полосу уверенности в оверлее).
+
+Внешняя точка выхода — замыкание `onGesture: ((GestureType) -> Void)?`, которое
+`CookingSessionView` привязывает к навигации и таймеру.
+
+**Захват кадров.** `start()` запрашивает доступ к камере
+(`AVCaptureDevice.requestAccess`) и при согласии в `setupAndStart()` поднимает
+`AVCaptureSession` с фронтальной камерой (`.builtInWideAngleCamera`, `.front`,
+пресет `.medium`). Кадры уходят в `AVCaptureVideoDataOutput`, делегат которого
+работает на приватной очереди `processingQueue` (`qos: .userInteractive`,
+`alwaysDiscardsLateVideoFrames = true`) — вся тяжёлая обработка **вне** главного
+потока, UI-поля публикуются через `DispatchQueue.main.async`. `stop()` гасит
+сессию и обнуляет состояние.
+
+**Распознавание позы.** Для каждого кадра создаётся `VNDetectHumanHandPoseRequest`
+(`maximumHandCount = 1`) и выполняется `VNImageRequestHandler`
+(`orientation: .leftMirrored` — компенсация фронтальной камеры). Если руки в кадре
+нет — состояние свайпа/кулака сбрасывается и `detectionConfidence` обнуляется.
+
+**Порядок проверки жестов** (`detectGesture`): сначала кулак (с накоплением
+удержания через `fistDetectedAt` и порогом `fistHoldDuration`), затем V, затем —
+если ладонь открыта — свайп. Открытая ладонь/кулак определяются по числу
+выпрямленных пальцев: `isExtended` сравнивает `y` кончика (`…Tip`) и сустава
+(`…MCP`) с запасом, при `confidence > 0.3`; ладонь — ≥3 выпрямленных, кулак — ≥3
+согнутых; V — указательный+средний выпрямлены, безымянный+мизинец согнуты.
+
+**Определение свайпа.** `detectSwipe(from:)` берёт точку запястья (`.wrist`,
+`confidence > 0.4`) и считает дельту `x` относительно предыдущего кадра
+(история в `wristBuffer`, `previousWristPosition`). Так как фронтальная камера
+зеркальна, свайп вправо уменьшает `wrist.x`: `deltaX < -swipeSensitivity` →
+`swipeNext`, `deltaX > swipeSensitivity` → `swipePrev`.
+
+**Защита от дребезга.** Между жестами выдерживается `cooldown = 1.5 с` (те же
+1.5 с, что у голосовых команд): срабатывания чаще игнорируются, при этом старт
+удержания кулака продолжает отслеживаться. При распознавании обновляется
+`detectedGesture`, вызывается `onGesture`, и через 1.5 с жест снимается с оверлея,
+если новый не пришёл.
+
+**Параметры.** `swipeSensitivity` (мин. дельта запястья, 0.02–0.10) и
+`fistHoldDuration` (время удержания кулака, 0.5–2.0 с) читаются из `UserDefaults`
+(ключи `handsfree.swipeSensitivity` / `handsfree.fistHoldDuration`, дефолты
+0.04 / 1.0 через хелпер `Double.nonzero(default:)`) и настраиваются в
+`SettingsView`.
+
+### Оверлей: `HandsFreeOverlayView`
+
+`HandsFreeOverlayView` — прозрачный оверлей поверх `CookingSessionView`,
+размещённый **снизу** (`padding(.bottom, 100)`), чтобы не перекрывать верхний
+`VoiceCommandOverlayView`. Полностью пассивен (`allowsHitTesting(false)`) — не
+перехватывает свайпы сессии. Состоит из двух частей:
+
+- **`statusBadge`** — капсула «Hands-free активен» с пульсирующим индикатором и
+  **полосой уверенности** (`confidence`): цвет меняется красный → жёлтый →
+  зелёный (`confidenceColor`), показывается пока `isActive == true`;
+- **`gestureCard`** — карточка с иконкой и названием последнего жеста, появляется
+  через `.scale + .opacity`-переход и `spring`-анимацию при смене `gesture`.
+
+### Интеграция в `CookingSessionView`
+
+`CookingSessionView` владеет `@StateObject gestureDetector` и локальным
+состоянием `handsFreeEnabled` / `showCameraPermissionAlert`:
+
+- в `onAppear` вызывается `wireGestureDetector()`; если в настройках включён
+  `handsfree.enabledByDefault` (`UserDefaults`) — `handsFreeEnabled` сразу
+  поднимается;
+- тумблеры («OFF/ON» в хедере и «Жесты» внизу экрана) переключают
+  `handsFreeEnabled`; `onChange(of: handsFreeEnabled)` стартует/останавливает
+  детектор;
+- `startHandsFree()` смотрит `AVCaptureDevice.authorizationStatus`: при
+  `.authorized` / `.notDetermined` — `start()` (сам запросит разрешение); при
+  `.denied` / `.restricted` — сбрасывает тумблер и показывает алерт о доступе к
+  камере;
+- `onChange(of: scenePhase)` при уходе приложения из `.active` останавливает
+  детектор и сбрасывает `handsFreeEnabled` (симметрично голосовым командам).
+
+Жесты работают **независимо** от голосовых команд — можно включить оба режима
+одновременно; оба вызывают одни и те же операции навигации/таймера.
+
+### Настройки: секция Hands-Free
+
+В `SettingsView` секция `handsFreeSection` содержит:
+
+- **`cameraPermissionRow`** — статус доступа к камере;
+- **тумблер «Включать по умолчанию»** — пишет флаг `handsfree.enabledByDefault`
+  в `UserDefaults` (его читает `CookingSessionView` при старте сессии);
+- **слайдер «Чувствительность свайпа»** (0.02…0.10, шаг 0.01) — пишет
+  `handsfree.swipeSensitivity`; текстовый ярлык `sensitivityLabel` показывает
+  «Высокая / Средняя / Низкая» (меньше значение = реагирует на меньшее движение);
+- **слайдер «Удержание кулака»** (0.5…2.0 с, шаг 0.1) — пишет
+  `handsfree.fistHoldDuration`;
+- **footer** — пояснение приватности: видеопоток обрабатывается только на
+  устройстве и никогда не передаётся на сервер.
+
+Ключи `UserDefaults` (`handsfree.swipeSensitivity` / `handsfree.fistHoldDuration`
+/ `handsfree.enabledByDefault`) и дефолты (0.04 / 1.0) согласованы между
+`SettingsView` ↔ `HandGestureDetector` ↔ `CookingSessionView`.

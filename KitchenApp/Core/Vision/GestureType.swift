@@ -1,5 +1,11 @@
 import Foundation
 
+/// Каталог распознаваемых Hands-Free жестов (SPEC.md §2.7). Каждый кейс несёт
+/// локализованное название (`displayName`) и SF-иконку (`iconName`) для карточки
+/// `HandsFreeOverlayView`. Ключевые для MVP — `swipeNext` / `swipePrev`
+/// (следующий / предыдущий шаг). Маппинг «жест → действие» задаётся в
+/// `CookingSessionView.wireGestureDetector()`.
+/// Документация: DOCS.md → «MVP — Hands-free жесты (следующий/предыдущий шаг)».
 enum GestureType: Equatable {
     case swipeNext   // Open palm moving right → next step
     case swipePrev   // Open palm moving left  → previous step

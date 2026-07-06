@@ -2,6 +2,12 @@ import SwiftUI
 
 // Transparent overlay shown on top of CookingSessionView when hands-free is active.
 // Shows detected gesture (icon + name) with auto-dismiss animation.
+//
+// Документация: DOCS.md → «MVP — Hands-free жесты (следующий/предыдущий шаг)».
+// Нижний (bottom) оверлей: пульсирующий бейдж «Hands-free активен» с полосой
+// уверенности (confidence) и карточка последнего жеста (gesture) с иконкой и
+// названием из GestureType. Пассивен — allowsHitTesting(false), не перехватывает
+// свайпы сессии; размещён снизу, чтобы не пересекаться с VoiceCommandOverlayView.
 struct HandsFreeOverlayView: View {
     let gesture: GestureType?
     let confidence: Float

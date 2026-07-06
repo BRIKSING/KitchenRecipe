@@ -5,6 +5,23 @@ import Foundation
 // NSCameraUsageDescription must be set in Info.plist:
 // "Камера используется для управления рецептом жестами рук в режиме Hands-Free"
 
+/// Распознавание жестов рук для Hands-Free управления сессией приготовления
+/// через Vision (`VNDetectHumanHandPoseRequest`) поверх `AVCaptureSession`
+/// (SPEC.md §2.7, §6 «MVP»). Ключевой сценарий MVP — листание шагов «следующий /
+/// предыдущий» открытой ладонью; также распознаются кулак (пауза/таймер) и V.
+///
+/// Работает **локально**: видеопоток обрабатывается на устройстве в фоновой
+/// очереди (`processingQueue`) и **не** передаётся на сервер; UI-поля публикуются
+/// на главном потоке. Направление свайпа определяется по дельте `x` запястья
+/// между кадрами (передняя камера зеркальна: свайп вправо → `wrist.x` убывает).
+///
+/// Публикуемые поля: `detectedGesture` (для оверлея, гасит себя через 1.5 с),
+/// `isRunning`, `detectionConfidence` (уверенность по точке запястья). Внешняя
+/// точка выхода — замыкание `onGesture`, которое `CookingSessionView` мапит на
+/// навигацию/таймер. Между срабатываниями выдерживается `cooldown = 1.5 с`.
+/// Параметры `swipeSensitivity` и `fistHoldDuration` читаются из `UserDefaults`
+/// (настраиваются в `SettingsView`). Документация: DOCS.md → «MVP — Hands-free
+/// жесты (следующий/предыдущий шаг)».
 final class HandGestureDetector: NSObject, ObservableObject {
     @Published private(set) var detectedGesture: GestureType?
     @Published private(set) var isRunning = false
