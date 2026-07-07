@@ -2086,3 +2086,100 @@ gesture/camera/vision-эндпоинтов). Стек тот же, что у Э�
 же связку: заводит собственный `RecipesQuery`, проставляет `query.category` =
 id выбранной категории и вызывает тот же `RecipeViewModel.loadRecipes(query:)` —
 поиск/фильтр/пагинация работают идентично витрине без дублирования логики.
+
+---
+
+## MVP — Таймер на шаге
+
+Обратный отсчёт, привязанный к конкретному шагу рецепта (SPEC.md §2.6, §6
+«MVP»). Пользовательский сценарий: автор задаёт таймер при авторинге шага
+(например, «варить пасту 8:00»), а во время готовки этот таймер доступен прямо
+в карточке шага — его можно запустить, поставить на паузу и сбросить, а по
+окончании приходит звуковой/тактильный сигнал. Слой полностью **клиентский**:
+отсчёт идёт на устройстве, сервер лишь хранит длительность в секундах
+(`Step.timerSec`). Фича сквозная — затрагивает модель, редактор, режим
+приготовления и настройки; ниже она собрана со стороны своей главной функции —
+таймера шага. Техническая механика `TimerService` подробно разобрана в Этапе 9
+(«Таймер шага: `TimerService` + сохранение состояния»), здесь — сквозной обзор
+всей фичи.
+
+### Состав фичи
+
+| Подзадача | Где реализовано |
+|---|---|
+| Хранение длительности в модели шага | `Step.timerSec: Int?` в `KitchenApp/Shared/Models/Models.swift` |
+| Авторинг таймера (тумблер + минуты:секунды) | `timerSection` в `KitchenApp/Features/Editor/StepEditorView.swift` |
+| Сервис обратного отсчёта | `TimerService` в `KitchenApp/Features/Cooking/TimerService.swift` |
+| UI таймера в сессии (play/pause/reset) | `timerControl` в `KitchenApp/Features/Cooking/CookingSessionView.swift` |
+| Сохранение состояния между шагами | `timerStates` + `saveTimerState`/`configureTimerForStep` в `CookingSessionView.swift` |
+| Сигнал окончания (звук/вибрация) | `resume()` в `TimerService.swift` + флаги `timer.sound`/`timer.haptic` |
+| Настройки сигнала | `notificationsSection` в `KitchenApp/Features/Settings/SettingsView.swift` |
+| Форматирование `MM:SS` | `Int.formattedTimer` в `KitchenApp/Shared/Extensions/Extensions.swift` |
+| Управление таймером жестом/голосом | `wireGestureDetector`/`wireVoiceCommands` в `CookingSessionView.swift` |
+
+### Модель: `Step.timerSec`
+
+Длительность таймера хранится в доменной модели шага как опциональное поле
+`timerSec: Int?` (секунды), декодируется из ключа `timer_sec` серверного JSON
+(`CodingKeys` в `Models.swift`). `nil` или `0` означают «у шага нет таймера» —
+это признак, по которому UI решает, показывать ли блок таймера. Значение —
+единственное, что персистится; сам ход отсчёта живёт только на клиенте во время
+сессии.
+
+### Авторинг: `StepEditorView.timerSection`
+
+В редакторе шага (`StepEditorView`) секция «Таймер» состоит из тумблера
+«Использовать таймер» (`step.timerEnabled`) и, когда он включён, двух колёсных
+пикеров:
+
+- **Минуты** — `Picker` со значениями `0..<120`;
+- **Секунды** — `Picker` с шагом 5 (`stride(from: 0, to: 60, by: 5)`).
+
+Пикеры связаны с `step.timerMinutes`/`step.timerSeconds`; вью-модель редактора
+сворачивает их в итоговые `timerSec` при сохранении шага (соответствует
+SPEC.md §2.8 — «Таймер: toggle + поле ввода (минуты:секунды)»).
+
+### Отсчёт: `TimerService`
+
+`TimerService` (`@MainActor`, `ObservableObject`) — один экземпляр на всю
+сессию приготовления. Публикует `remaining` (секунды), `isRunning`,
+`isFinished`; отсчёт реализован через `Task` с `Task.sleep` на 1 секунду,
+уменьшающий `remaining`. Методы `configure(seconds:)`, `restore(...)`,
+`toggle()`/`resume()`/`pause()`/`stop()` описаны в Этапе 9. Свойство
+`formattedTime` отдаёт остаток в виде `MM:SS` через расширение
+`Int.formattedTimer` (`String(format: "%02d:%02d", self / 60, self % 60)`).
+
+### UI и сохранение состояния в сессии
+
+Блок таймера (`timerControl` в `CookingSessionView`) рисуется в карточке шага
+только при `timerSec > 0`: монопространственное время (после окончания —
+зелёное, с `contentTransition(.numericText())`), кнопка play/pause и кнопка
+сброса (`arrow.counterclockwise`), а по завершении — метка «Время вышло!» и
+галочка.
+
+Поскольку `TimerService` один, состояние каждого шага держится в словаре
+`timerStates: [Int: (remaining, isFinished)]`: `saveTimerState(for:)` при уходе
+с шага сохраняет остаток и ставит таймер на паузу, а `configureTimerForStep(_:)`
+при входе либо восстанавливает сохранённое состояние (`restore`), либо задаёт
+свежий отсчёт (`configure`). Кнопка сброса очищает запись в `timerStates`.
+Так, вернувшись на предыдущий шаг, пользователь видит таймер там же, где
+оставил (SPEC.md §2.6 — «таймер сохраняет состояние при переключении шагов»).
+
+### Сигнал окончания и его настройки
+
+При достижении нуля `TimerService` выставляет `isFinished = true` и подаёт
+сигнал окончания: системный звук (`AudioServicesPlaySystemSound(1315)`) и/или
+вибрацию (`kSystemSoundID_Vibrate`). Оба канала управляются флагами
+`timer.sound` и `timer.haptic` в `UserDefaults` (по умолчанию включены).
+Тумблеры «Звук по окончании» и «Вибрация по окончании» задаются в
+`SettingsView.notificationsSection` (Этап 12), которая пишет те же ключи —
+`TimerService` читает их в момент срабатывания, поэтому изменение настройки
+действует сразу без перезапуска сессии.
+
+### Управление таймером без касания
+
+Таймер шага интегрирован с hands-free-слоями: жест «сжатый кулак» и голосовая
+команда «таймер» оба мапятся на `timer.toggle()` — в `wireGestureDetector()`
+(кейс `.fistHold`) и `wireVoiceCommands()` (кейс `.toggleTimer`) соответственно.
+Это позволяет запускать и приостанавливать отсчёт с грязными руками, не
+прерывая готовку (см. разделы про Hands-free и голосовые команды).
