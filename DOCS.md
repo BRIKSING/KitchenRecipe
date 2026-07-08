@@ -2183,3 +2183,130 @@ SPEC.md §2.8 — «Таймер: toggle + поле ввода (минуты:с�
 (кейс `.fistHold`) и `wireVoiceCommands()` (кейс `.toggleTimer`) соответственно.
 Это позволяет запускать и приостанавливать отсчёт с грязными руками, не
 прерывая готовку (см. разделы про Hands-free и голосовые команды).
+
+
+## После MVP — Синхронизация между устройствами (iCloud sync)
+
+Синхронизация пользовательских данных между устройствами одного Apple ID через
+iCloud (SPEC.md §6 «После MVP» — «Синхронизация между устройствами (iCloud /
+server sync)»). Реализован **iCloud-вариант** синхронизации: черновики рецептов
+и офлайн-кэш просмотренных рецептов, хранящиеся в SwiftData, автоматически
+реплицируются в приватную базу CloudKit и подтягиваются на другие устройства
+пользователя. Слой **полностью клиентский** — приложение не обращается к
+собственному бэкенду для синхронизации, вся репликация идёт через CloudKit
+средствами SwiftData; серверных эндпоинтов синхронизации нет. Фича сквозная:
+затрагивает конфигурацию SwiftData-контейнера при запуске, отдельный
+сервис-статус `CloudKitSyncService` и секцию настроек.
+
+### Состав фичи
+
+| Подзадача | Где реализовано |
+|---|---|
+| Что синхронизируется (SwiftData-модели) | `DraftRecipe`, `CachedRecipeDetail` в `KitchenApp/Core/Persistence/` |
+| Включение CloudKit на контейнере | `makeModelContainer()` в `KitchenApp/KitchenRecipeApp.swift` |
+| Фиксация «состояния на старте» | `CloudKitSyncService.configureLaunchSync()` |
+| Сервис статуса и предпочтений | `CloudKitSyncService` в `KitchenApp/Core/Sync/CloudKitSyncService.swift` |
+| Модель статуса | `enum SyncStatus` там же |
+| UI настроек (тумблер, статус, дата) | `iCloudSyncSection` в `KitchenApp/Features/Settings/SettingsView.swift` |
+| Внедрение в окружение | `.environment(CloudKitSyncService.shared)` в `KitchenRecipeApp` |
+| Локализация статусов | ключи `sync.*` в `KitchenApp/Resources/*.lproj/Localizable.strings` |
+
+### Что синхронизируется
+
+Синхронизации подлежат две локальные SwiftData-модели, входящие в общую
+`Schema`:
+
+- **`DraftRecipe`** — черновики рецептов из редактора (Этап 11): название,
+  описание, ингредиенты/шаги/теги в виде JSON-полей, обложка, `updatedAt`;
+- **`CachedRecipeDetail`** — офлайн-кэш просмотренных рецептов (Этап 12):
+  `recipeId`, сериализованный `recipeData`, заголовок и `cachedAt`.
+
+Обе модели используются в приложении как локальное хранилище; когда iCloud
+включён, тот же самый стор реплицируется через CloudKit, поэтому черновик,
+начатый на iPhone, доступен на iPad, а просмотренные офлайн рецепты
+переносятся между устройствами. Серверные (сетевые) данные при этом не
+дублируются — источником опубликованных рецептов остаётся API.
+
+### Включение CloudKit на контейнере (`KitchenRecipeApp`)
+
+Контейнер SwiftData создаётся один раз при запуске в статическом
+`makeModelContainer()`:
+
+1. Собирается `Schema([DraftRecipe.self, CachedRecipeDetail.self])`.
+2. `CloudKitSyncService.configureLaunchSync()` возвращает, включён ли iCloud в
+   предпочтениях, **и** запоминает это значение как «состояние на старте»
+   (для логики подсказки о перезапуске, см. ниже).
+3. Если синхронизация включена — создаётся `ModelConfiguration` с
+   `cloudKitDatabase: .automatic` (использует контейнер iCloud по умолчанию;
+   требует включённых capability iCloud + CloudKit в проекте Xcode).
+4. Если инициализация CloudKit-контейнера падает (нет entitlements, симулятор,
+   нет аккаунта iCloud) — приложение **не** аварийно завершается, а мягко
+   деградирует до локального стора (`ModelConfiguration(schema:)` без CloudKit),
+   оставаясь полностью рабочим. Только сбой создания даже локального контейнера
+   считается фатальным.
+
+Контейнер невозможно «горячо» пересобрать во время работы, поэтому решение
+CloudKit/локально принимается ровно один раз за запуск.
+
+### Сервис `CloudKitSyncService`
+
+`@Observable`-синглтон (`CloudKitSyncService.shared`), внедряемый в окружение
+SwiftUI через `.environment(...)`. Отвечает за **предпочтение** и **статус**
+синхронизации, но не за саму репликацию (её выполняет SwiftData+CloudKit):
+
+- **Состояние (read-only снаружи):** `status: SyncStatus`, `lastSyncDate: Date?`,
+  `isSyncEnabled: Bool`, `requiresRestartToBecomeActive: Bool`.
+- **`setEnabled(_:)`** — переключает предпочтение, пишет его в `UserDefaults`
+  (`sync.iCloudEnabled`) и пересчитывает флаг «нужен перезапуск», сравнивая
+  новое значение с зафиксированным на старте (`sync.wasEnabledAtLaunch`). Так
+  как контейнер уже создан, изменение вступает в силу только на следующем
+  холодном запуске — поэтому включение/выключение не трогает активный стор.
+- **`checkAccountStatus()`** (`@MainActor`, `async`) — запрашивает
+  `CKContainer.default().accountStatus()` и переводит `status` в одно из
+  состояний `SyncStatus`; при `.available` фиксирует `lastSyncDate` и пишет его
+  в `UserDefaults` (`sync.lastDate`). Вызывается при инициализации, при
+  включении тумблера и по кнопке «Обновить».
+- **`configureLaunchSync()`** (static) — вызывается один раз при старте до
+  создания контейнера; записывает текущее предпочтение как «состояние на
+  старте» и возвращает, нужно ли использовать CloudKit.
+
+### Модель статуса `SyncStatus`
+
+`enum SyncStatus` описывает все отображаемые состояния синхронизации:
+`unknown`, `syncing`, `synced`, `error(String)`, `disabled`,
+`accountNotAvailable`. Каждый кейс несёт `systemImageName` (иконка SF Symbols,
+например `checkmark.icloud.fill` для `synced`, `icloud.slash` для `disabled`) и
+`localizedDescription` — локализованный текст через `NSLocalizedString`
+(ключи `sync.status.*` и `sync.error.*`). Ошибки аккаунта iCloud
+(`.restricted`, `.couldNotDetermine`, `.temporarilyUnavailable`) маппятся в
+`.error(...)` с понятными сообщениями.
+
+### UI настроек (`SettingsView.iCloudSyncSection`)
+
+Секция «Синхронизация» в `SettingsView` полностью управляется состоянием
+сервиса:
+
+- **Тумблер** «Синхронизация iCloud» связан двусторонним `Binding` с
+  `isSyncEnabled`/`setEnabled(_:)`.
+- **Строка статуса** (только при включённой синхронизации): иконка
+  `status.systemImageName` (или `ProgressView` при `.syncing`), локализованный
+  текст `status.localizedDescription` и цвет по состоянию (`syncStatusColor`:
+  зелёный — synced, синий — syncing, красный — ошибки), плюс кнопка «Обновить»,
+  вызывающая `checkAccountStatus()`.
+- **Дата последней синхронизации** — `lastSyncDate` в относительном формате
+  (`.relative(presentation: .named)`).
+- **Подсказка о перезапуске** — показывается при
+  `requiresRestartToBecomeActive`, когда тумблер меняли уже после запуска.
+- **Приглашение войти в iCloud** — при статусе `.accountNotAvailable` кнопка
+  открывает системные «Настройки» (`UIApplication.openSettingsURLString`).
+- Футер секции поясняет, что через iCloud синхронизируются черновики и кэш
+  рецептов.
+
+### Приватность и деградация
+
+Синхронизируются только локальные данные пользователя (черновики и кэш) в его
+**приватной** базе CloudKit — привязанной к Apple ID, а не к бэкенду
+приложения. Отсутствие iCloud-аккаунта, entitlements или запуск в симуляторе не
+ломают приложение: контейнер прозрачно откатывается к локальному хранилищу, а
+секция настроек отражает реальный статус (`disabled` / `accountNotAvailable` /
+`error`).
