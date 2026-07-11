@@ -2310,3 +2310,135 @@ SwiftUI через `.environment(...)`. Отвечает за **предпочт
 ломают приложение: контейнер прозрачно откатывается к локальному хранилищу, а
 секция настроек отражает реальный статус (`disabled` / `accountNotAvailable` /
 `error`).
+
+## После MVP — Комментарии и оценки рецептов
+
+Пользовательские отзывы и звёздный рейтинг рецептов (SPEC.md §6 «После MVP» —
+«Комментарии и оценки рецептов»). Фича сквозная по фронтенду: доменные модели и
+эндпоинты сетевого слоя, единый `CommentsViewModel`, переиспользуемый компонент
+звёзд `StarRatingView`, отдельный экран отзывов, лист оценки и встраивание в
+карточку рецепта и в экран завершения готовки. Данные (комментарии, рейтинг)
+хранятся на бэкенде — клиент только читает и отправляет их через API; локального
+кэша отзывов нет.
+
+### Состав фичи
+
+| Подзадача | Где реализовано |
+|---|---|
+| Доменные модели | `Comment`, `CommentAuthor`, `RatingStats`, `CommentsQuery`, `CreateCommentRequest`, `CreateRatingRequest`, `EmptyResponse` в `KitchenApp/Shared/Models/Models.swift` |
+| Эндпоинты | `recipeComments`, `createComment`, `deleteComment`, `recipeRatingStats`, `rateRecipe` в `KitchenApp/Core/Network/Endpoint.swift` |
+| Логика (загрузка/мутации) | `CommentsViewModel` в `KitchenApp/Features/Recipes/CommentsViewModel.swift` |
+| Компонент звёзд | `StarRatingView` в `KitchenApp/Shared/Components/StarRatingView.swift` |
+| Экран отзывов + добавление | `RecipeCommentsView`, приватные `CommentRowView`, `AddCommentSheet` в `KitchenApp/Features/Recipes/RecipeCommentsView.swift` |
+| Лист оценки | `RateRecipeSheet` в `KitchenApp/Features/Recipes/RateRecipeSheet.swift` |
+| Встраивание в карточку | `ratingSummarySection`, `commentsPreviewSection` в `KitchenApp/Features/Recipes/RecipeDetailView.swift` |
+| Оценка после готовки | `.sheet` с `RateRecipeSheet` в `KitchenApp/Features/Cooking/CookingSessionView.swift` |
+| Локализация | ключи `comments.*` в `KitchenApp/Resources/*.lproj/Localizable.strings` |
+
+### Доменные модели и эндпоинты
+
+Отзыв описывает `Comment` (`id`, `author: CommentAuthor`, `text`, опциональный
+`rating: Int?`, `createdAt` из `created_at`). Агрегат рейтинга — `RatingStats`
+(`average: Double`, `count: Int`). Запросы на запись — `CreateCommentRequest`
+(`text` + опциональный `rating`) и `CreateRatingRequest` (`rating`). Список
+отзывов возвращается в общей обёртке `PaginatedResponse<Comment>`, где наличие
+следующей страницы вычисляется локально (`page < pages`). Постраничные
+параметры несёт `CommentsQuery` (`page`, `per_page`).
+
+В `Endpoint` добавлены пять кейсов:
+
+- `recipeComments(UUID, CommentsQuery)` → `GET /recipes/{id}/comments` (с
+  query-параметрами пагинации);
+- `createComment(UUID)` → `POST /recipes/{id}/comments`;
+- `deleteComment(recipeId:commentId:)` → `DELETE /recipes/{id}/comments/{cid}`;
+- `recipeRatingStats(UUID)` → `GET /recipes/{id}/rating`;
+- `rateRecipe(UUID)` → `POST /recipes/{id}/rating`.
+
+HTTP-метод и query-строка выводятся из кейса в `method`/`queryItems`, поэтому
+вызывающий код оперирует только семантикой эндпоинта.
+
+### Логика: `CommentsViewModel`
+
+`@MainActor`-класс (`ObservableObject`) с публикуемым состоянием `comments`,
+`ratingStats`, `isLoading`, `isSubmitting`. Работает через `APIClient.shared`:
+
+- **`loadInitial(recipeId:)`** — сбрасывает пагинацию и параллельно (`async
+  let`) грузит первую страницу комментариев и статистику рейтинга.
+- **`loadMore(recipeId:)`** — подгружает следующую страницу; защищена гвардами
+  `!isLoading` и `hasMore`, обновляет `hasMore`/`currentPage` из ответа.
+- **`loadRatingStats(recipeId:)`** — отдельная загрузка `RatingStats`; ошибку
+  **не** показывает (статистика опциональна и не должна ломать экран).
+- **`addComment(recipeId:text:rating:)`** — отправляет отзыв, оптимистично
+  вставляет его в начало списка; если был выставлен рейтинг — перезагружает
+  статистику. Возвращает `Bool` успеха.
+- **`deleteComment(recipeId:commentId:)`** — удаляет отзыв автора и убирает его
+  из списка локально.
+- **`rateRecipe(recipeId:rating:)`** — ставит/обновляет только оценку (без
+  текста) и получает свежий `RatingStats` в ответе.
+
+Ошибки записи и загрузки списка выводятся через глобальный
+`ErrorBannerState.shared.show(error)`.
+
+### Компонент `StarRatingView`
+
+Переиспользуемый компонент звёздного рейтинга в двух режимах:
+
+- **display-only** — рисует до пяти звёзд с поддержкой половинок
+  (`star.fill` / `star.leadinghalf.filled` / `star`), вычисляя заполнение по
+  дробному `rating`;
+- **интерактивный** (`isInteractive: true`) — звёзды кликабельны, выбранная
+  масштабируется с пружинной анимацией, выбор возвращается через
+  `onRatingChanged: (Int) -> Void`.
+
+Параметризуется `maxStars`, `starSize`, `color`. Доступность: в display-режиме
+объявляет суммарный «Рейтинг X из 5», в интерактивном — каждая звезда как
+кнопка. Используется в шапке экрана отзывов, в строках комментариев, в листах
+оценки и в карточке рецепта.
+
+### Экран отзывов `RecipeCommentsView`
+
+Полный список отзывов рецепта на собственном `CommentsViewModel`:
+
+- **Шапка рейтинга** (если `count > 0`) — крупная средняя оценка, `StarRatingView`
+  и число оценок.
+- **Список** комментариев (`CommentRowView`): аватар-инициал с цветом по хешу
+  имени, автор, дата, звёзды (если у отзыва есть `rating`) и текст; свайп влево
+  → удаление с `confirmationDialog`.
+- **Бесконечная подгрузка** — при появлении хвостового `ProgressView` вызывается
+  `loadMore`; поддержан pull-to-refresh.
+- **Пустое состояние** — иллюстрация и кнопка «Написать отзыв».
+- **`AddCommentSheet`** (приватный) — форма с опциональной интерактивной оценкой
+  и `TextEditor`; кнопка «Отправить» активна только при непустом тексте, по
+  успеху вызывает `onSuccess` (родитель перезагружает список) и закрывается.
+
+### Лист оценки `RateRecipeSheet`
+
+Отдельный лист именно для выставления оценки (обязательные звёзды + опциональный
+текст). Показывается из `RecipeDetailView` (кнопка «Оценить») и из
+`CookingSessionView` после экрана «Готово!». Особенности:
+
+- интерактивный `StarRatingView` (44 pt) с подписью-ярлыком выбранной оценки
+  (`Плохо`…`Отлично!`) и анимацией смены;
+- тумблер «Добавить текстовый отзыв» раскрывает `TextEditor` с плейсхолдером;
+- кнопка «Отправить» активна только при `rating > 0`; при наличии текста
+  вызывается `addComment`, иначе — `rateRecipe`;
+- по успеху показывается `successOverlay` («Спасибо за оценку!») на
+  `ultraThinMaterial`, затем лист закрывается и вызывается `onDismiss`.
+
+### Встраивание в карточку рецепта и экран готовки
+
+В `RecipeDetailView`:
+
+- **`ratingSummarySection`** — блок «Оценки» со средним баллом, звёздами и
+  числом оценок (или приглашением оценить первым); кнопка «Оценить» открывает
+  `RateRecipeSheet` через `showRateSheet`. Секция подгружает `RatingStats` в
+  `.task`.
+- **`commentsPreviewSection`** — заголовок «Отзывы» со счётчиком, до двух
+  последних комментариев (`commentPreviewRow`, текст в `lineLimit(3)`) и
+  `NavigationLink` «Все» → `RecipeCommentsView`.
+- Оба блока используют общий `commentsVM`; после отправки отзыва из листа список
+  и статистика перезагружаются.
+
+В `CookingSessionView` экран завершения содержит `.sheet(isPresented:
+$showRateSheet)` с `RateRecipeSheet(recipeId:recipeTitle:)`, что и реализует
+кнопку «Оценить рецепт» из SPEC.md §2.6.
